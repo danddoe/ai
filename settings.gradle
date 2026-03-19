@@ -1,0 +1,4 @@
+rootProject.name = 'erp'
+include 'iam'
+include 'entity-builder'
+include 'api-gateway'

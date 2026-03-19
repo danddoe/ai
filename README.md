@@ -1,6 +1,20 @@
-# AI Create
+# AI Create / ERP
 
-A modern AI tool.
+A modern AI tool and ERP backend.
+
+## IAM module (Identity and Access Management)
+
+The **iam** module is a multi-tenant IAM service built with **Java 17**, **Spring Boot**, and **Gradle (Groovy)**. It uses CockroachDB and JWT for future ERP modules.
+
+- **Requirements:** Java 17+, CockroachDB (or PostgreSQL)
+- **Build:** `./gradlew :iam:build`
+- **Run (with DevTools auto-reload):** `./gradlew :iam:bootRun`
+- **Details:** See [iam/README.md](iam/README.md)
+- **CockroachDB local setup:** See [cockroachdb/README.md](cockroachdb/README.md)
+
+## API gateway (BFF)
+
+**api-gateway** is a **Spring Cloud Gateway** reverse proxy (port **8000** by default) that routes to IAM (**8080**) and entity-builder (**8081**). Use this on Windows without Docker; see [api-gateway/README.md](api-gateway/README.md). For a Docker-based gateway, see [kong/README.md](kong/README.md).
 
 ## Overview
 
@@ -85,3 +99,4 @@ For questions or support, please open an issue on GitHub.
 
 - Thanks to all contributors
 - Built with modern AI technologies
+

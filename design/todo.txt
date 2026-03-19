@@ -1,0 +1,25 @@
+Use a separate plan for the “actual UI” that uses the layout
+
+Work stream	Plan	Contents
+Backend	Current “Dynamic Entity Builder Backend” plan	Schema API, Records API (including record save flow), PII vault, form_layouts API (store/retrieve layout JSON only). No UI.
+Frontend	New “Dynamic Form UI” plan (later)	App that (1) authenticates (e.g. IAM JWT), (2) loads entity definitions + form layout from Entity Builder API, (3) renders a dynamic form from the layout, (4) submits to Records API; tech stack, layout JSON schema contract, and deployment.
+
+
+What the “Dynamic Form UI” plan could include
+When you add that plan, it could cover:
+
+Scope: Single frontend app (or module) that renders dynamic forms from layout + entity schema; no backend logic.
+Dependencies: Entity Builder backend live (entities, fields, records API, form_layouts API); IAM for login and JWT.
+Contract: Layout JSON shape (sections, control type, field slug bindings) so backend and frontend agree.
+Features: Login/tenant context; fetch entity + layout by entity slug; render form; client-side validation aligned with field types; submit to POST/PATCH .../records; error display; optional draft/save.
+Tech: e.g. React/Vue/Svelte, build (Vite), how JWT is stored and sent.
+Out of scope: Form layout authoring UI (drag‑and‑drop builder) can be a later plan if you want.
+That way, “form layout” stays one backend feature in one plan, and “actual UI from form layout” is clearly a separate, frontend-only plan.
+
+Implications:
+
+Backend: No validation of layout content; no guarantee that it has sections, controls, or field slugs. Simple and flexible.
+Frontend / consumers: If a dynamic form UI (or any client) is going to render it, you need an agreed layout contract (e.g. “layout has sections[], each with controls[], each control has fieldSlug, type, …”). That can be:
+Documented only (e.g. in the API spec or a “Form layout JSON schema” doc), with the backend still storing any JSON, or
+Enforced later (e.g. JSON Schema validation in the API or in a separate “layout validator” step).
+So: in form_layouts the layout is free-form JSON in the current plan; for the actual UI you’d add a defined layout schema as documentation and/or validation in a later step.

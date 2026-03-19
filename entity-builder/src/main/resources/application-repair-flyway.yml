@@ -1,0 +1,10 @@
+# Activate once: --spring.profiles.active=repair-flyway
+# Updates flyway_schema_history checksums to match local migration files, then migrates.
+spring:
+  config:
+    activate:
+      on-profile: repair-flyway
+
+app:
+  flyway:
+    repair-before-migrate: true

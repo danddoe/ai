@@ -1,0 +1,19 @@
+﻿# Gradle
+.gradle/
+build/
+**/build/
+data/
+
+# IntelliJ / IDEA
+.idea/
+
+# CockroachDB local data
+cockroachdb/data/
+cockroach-data/
+
+# Logs
+*.log
+
+# OS
+Thumbs.db
+.DS_Store

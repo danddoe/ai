@@ -1,0 +1,38 @@
+_format_version: "3.0"
+
+# Entity-builder routes first (more specific) so they match before IAM /v1 catch-all
+services:
+  - name: entity-builder
+    url: http://host.docker.internal:8081
+    routes:
+      - name: tenant-records
+        paths:
+          - ~/v1/tenants/[^/]+/records
+        regex_priority: 100
+      - name: tenant-entities
+        paths:
+          - ~/v1/tenants/[^/]+/entities
+        regex_priority: 100
+      - name: entity-relationships
+        paths:
+          - /v1/entity-relationships
+        regex_priority: 50
+      - name: entities
+        paths:
+          - /v1/entities
+        regex_priority: 50
+
+  # IAM service (auth, tenants, users, roles, permissions)
+  - name: iam
+    url: http://host.docker.internal:8080
+    routes:
+      - name: auth
+        paths:
+          - /auth
+      - name: well-known
+        paths:
+          - /.well-known
+      - name: iam-v1
+        paths:
+          - /v1
+        regex_priority: 0

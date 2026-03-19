@@ -1,0 +1,56 @@
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    gateway:
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowed-origin-patterns:
+              - 'http://localhost:*'
+              - 'http://127.0.0.1:*'
+            allowed-methods:
+              - GET
+              - POST
+              - PUT
+              - PATCH
+              - DELETE
+              - OPTIONS
+            allowed-headers:
+              - '*'
+            allow-credentials: true
+            max-age: 3600
+      routes:
+        # Entity-builder (specific paths before IAM /v1/**)
+        - id: entity-builder-tenant-records
+          uri: ${ENTITY_BUILDER_URL:http://localhost:8081}
+          predicates:
+            - Path=/v1/tenants/*/records,/v1/tenants/*/records/**
+        - id: entity-builder-tenant-entities
+          uri: ${ENTITY_BUILDER_URL:http://localhost:8081}
+          predicates:
+            - Path=/v1/tenants/*/entities,/v1/tenants/*/entities/**
+        - id: entity-builder-entity-relationships
+          uri: ${ENTITY_BUILDER_URL:http://localhost:8081}
+          predicates:
+            - Path=/v1/entity-relationships,/v1/entity-relationships/**
+        - id: entity-builder-entities
+          uri: ${ENTITY_BUILDER_URL:http://localhost:8081}
+          predicates:
+            - Path=/v1/entities,/v1/entities/**
+        # IAM
+        - id: iam-auth
+          uri: ${IAM_URL:http://localhost:8080}
+          predicates:
+            - Path=/auth,/auth/**
+        - id: iam-well-known
+          uri: ${IAM_URL:http://localhost:8080}
+          predicates:
+            - Path=/.well-known/**
+        - id: iam-v1
+          uri: ${IAM_URL:http://localhost:8080}
+          predicates:
+            - Path=/v1/**
+
+server:
+  port: ${GATEWAY_PORT:8000}

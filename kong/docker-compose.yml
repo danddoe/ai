@@ -1,0 +1,17 @@
+services:
+  kong:
+    image: kong/kong-gateway:3.13
+    container_name: kong-bff
+    restart: unless-stopped
+    ports:
+      - "8000:8000"   # Proxy HTTP
+      - "8443:8443"   # Proxy HTTPS
+    volumes:
+      - ./kong.yml:/kong/declarative/kong.yml:ro
+    environment:
+      KONG_DATABASE: off
+      KONG_DECLARATIVE_CONFIG: /kong/declarative/kong.yml
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

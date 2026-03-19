@@ -1,0 +1,42 @@
+spring:
+  application:
+    name: iam
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:26257/defaultdb?sslmode=disable}
+    username: ${DATABASE_USER:root}
+    password: ${DATABASE_PASSWORD:}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.CockroachDialect
+    open-in-view: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    # Separate from entity-builder (flyway_entity_builder_schema_history) so V1/V2 are IAM scripts only.
+    table: flyway_iam_schema_history
+    # Non-empty defaultdb (e.g. entity-builder already applied): allow creating our history table without failing.
+    baseline-on-migrate: true
+    baseline-version: 0
+
+server:
+  port: ${SERVER_PORT:8080}
+
+app:
+  auth:
+    # Set true for browser SPAs (refresh token in httpOnly cookie; JSON omits refreshToken). E2E tests force false.
+    refresh-token-in-cookie: ${AUTH_REFRESH_TOKEN_IN_COOKIE:false}
+    refresh-cookie-name: erp_refresh
+    refresh-cookie-secure: ${AUTH_REFRESH_COOKIE_SECURE:false}
+  flyway:
+    # One-time fix: start with profile repair-flyway (see application-repair-flyway.yml), or set this to true once.
+    repair-before-migrate: false
+  jwt:
+    issuer: ${JWT_ISSUER:erp-iam}
+    audience: ${JWT_AUDIENCE:erp-api}
+    access-token-expiration-seconds: ${JWT_ACCESS_EXPIRY:900}
+    refresh-token-expiration-seconds: ${JWT_REFRESH_EXPIRY:604800}
