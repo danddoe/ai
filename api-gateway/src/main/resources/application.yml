@@ -30,8 +30,8 @@ spring:
           predicates:
             - Path=/v1/search,/v1/search/**
         # Entity-builder (specific paths before IAM /v1/**)
-        - id: core-org-master-data
-          uri: ${CORE_ORG_URL:http://localhost:8084}
+        - id: core-service-master-data
+          uri: ${CORE_SERVICE_URL:http://localhost:8084}
           predicates:
             - Path=/v1/countries,/v1/countries/**,/v1/tenants/*/companies,/v1/tenants/*/companies/**,/v1/tenants/*/business-units,/v1/tenants/*/business-units/**,/v1/tenants/*/regions,/v1/tenants/*/regions/**,/v1/tenants/*/locations,/v1/tenants/*/locations/**,/v1/tenants/*/properties,/v1/tenants/*/properties/**,/v1/tenants/*/property-units,/v1/tenants/*/property-units/**
         - id: lending-tenant-loans
