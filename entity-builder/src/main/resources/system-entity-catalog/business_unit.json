@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "manifestKey": "business_unit",
+  "entity": {
+    "name": "Business unit",
+    "slug": "business_unit",
+    "categoryKey": "master_data",
+    "description": "Organizational unit under a company; core-org API; external_id = bu_id.",
+    "defaultDisplayFieldSlug": "bu_name"
+  },
+  "fields": [
+    {
+      "name": "Company",
+      "slug": "company_id",
+      "sortOrder": 10,
+      "fieldType": "string",
+      "required": true,
+      "pii": false,
+      "config": {
+        "storage": "CORE_DOMAIN",
+        "coreBinding": { "service": "core-org", "column": "company_id" }
+      }
+    },
+    {
+      "name": "Parent BU",
+      "slug": "parent_bu_id",
+      "sortOrder": 20,
+      "fieldType": "string",
+      "required": false,
+      "pii": false,
+      "config": {
+        "storage": "CORE_DOMAIN",
+        "coreBinding": { "service": "core-org", "column": "parent_bu_id" }
+      }
+    },
+    {
+      "name": "BU type",
+      "slug": "bu_type",
+      "sortOrder": 30,
+      "fieldType": "string",
+      "required": true,
+      "pii": false,
+      "config": {
+        "storage": "CORE_DOMAIN",
+        "coreBinding": { "service": "core-org", "column": "bu_type" }
+      }
+    },
+    {
+      "name": "BU name",
+      "slug": "bu_name",
+      "sortOrder": 40,
+      "fieldType": "string",
+      "required": true,
+      "pii": false,
+      "config": {
+        "storage": "CORE_DOMAIN",
+        "coreBinding": { "service": "core-org", "column": "bu_name" }
+      }
+    }
+  ]
+}

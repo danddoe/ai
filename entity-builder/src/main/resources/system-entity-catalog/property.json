@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "manifestKey": "property",
+  "entity": {
+    "name": "Property",
+    "slug": "property",
+    "categoryKey": "master_data",
+    "description": "Building or asset; core-org API; external_id = property_id.",
+    "defaultDisplayFieldSlug": "property_name"
+  },
+  "fields": [
+    {
+      "name": "Company",
+      "slug": "company_id",
+      "sortOrder": 10,
+      "fieldType": "string",
+      "required": true,
+      "pii": false,
+      "config": {
+        "storage": "CORE_DOMAIN",
+        "coreBinding": { "service": "core-org", "column": "company_id" }
+      }
+    },
+    {
+      "name": "Location",
+      "slug": "location_id",
+      "sortOrder": 20,
+      "fieldType": "string",
+      "required": true,
+      "pii": false,
+      "config": {
+        "storage": "CORE_DOMAIN",
+        "coreBinding": { "service": "core-org", "column": "location_id" }
+      }
+    },
+    {
+      "name": "Property name",
+      "slug": "property_name",
+      "sortOrder": 30,
+      "fieldType": "string",
+      "required": true,
+      "pii": false,
+      "config": {
+        "storage": "CORE_DOMAIN",
+        "coreBinding": { "service": "core-org", "column": "property_name" }
+      }
+    },
+    {
+      "name": "Property type",
+      "slug": "property_type",
+      "sortOrder": 40,
+      "fieldType": "string",
+      "required": true,
+      "pii": false,
+      "config": {
+        "storage": "CORE_DOMAIN",
+        "coreBinding": { "service": "core-org", "column": "property_type" }
+      }
+    }
+  ]
+}

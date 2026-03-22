@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "manifestKey": "property_unit",
+  "entity": {
+    "name": "Property unit",
+    "slug": "property_unit",
+    "categoryKey": "master_data",
+    "description": "Leasable space within a property; core-org API; external_id = unit_id.",
+    "defaultDisplayFieldSlug": "unit_number"
+  },
+  "fields": [
+    {
+      "name": "Property",
+      "slug": "property_id",
+      "sortOrder": 10,
+      "fieldType": "string",
+      "required": true,
+      "pii": false,
+      "config": {
+        "storage": "CORE_DOMAIN",
+        "coreBinding": { "service": "core-org", "column": "property_id" }
+      }
+    },
+    {
+      "name": "Unit number",
+      "slug": "unit_number",
+      "sortOrder": 20,
+      "fieldType": "string",
+      "required": true,
+      "pii": false,
+      "config": {
+        "storage": "CORE_DOMAIN",
+        "coreBinding": { "service": "core-org", "column": "unit_number" }
+      }
+    },
+    {
+      "name": "Square footage",
+      "slug": "square_footage",
+      "sortOrder": 30,
+      "fieldType": "number",
+      "required": false,
+      "pii": false,
+      "config": {
+        "storage": "CORE_DOMAIN",
+        "coreBinding": { "service": "core-org", "column": "square_footage" }
+      }
+    },
+    {
+      "name": "Status",
+      "slug": "status",
+      "sortOrder": 40,
+      "fieldType": "string",
+      "required": true,
+      "pii": false,
+      "config": {
+        "storage": "CORE_DOMAIN",
+        "coreBinding": { "service": "core-org", "column": "status" }
+      }
+    }
+  ]
+}

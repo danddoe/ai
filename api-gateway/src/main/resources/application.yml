@@ -3,6 +3,9 @@ spring:
     name: api-gateway
   cloud:
     gateway:
+      httpclient:
+        connect-timeout: 5000
+        response-timeout: 60s
       globalcors:
         cors-configurations:
           '[/**]':
@@ -21,7 +24,28 @@ spring:
             allow-credentials: true
             max-age: 3600
       routes:
+        # Global search BFF (omnibox)
+        - id: global-search-omnibox
+          uri: ${GLOBAL_SEARCH_URL:http://localhost:8082}
+          predicates:
+            - Path=/v1/search,/v1/search/**
         # Entity-builder (specific paths before IAM /v1/**)
+        - id: core-org-master-data
+          uri: ${CORE_ORG_URL:http://localhost:8084}
+          predicates:
+            - Path=/v1/countries,/v1/countries/**,/v1/tenants/*/companies,/v1/tenants/*/companies/**,/v1/tenants/*/business-units,/v1/tenants/*/business-units/**,/v1/tenants/*/regions,/v1/tenants/*/regions/**,/v1/tenants/*/locations,/v1/tenants/*/locations/**,/v1/tenants/*/properties,/v1/tenants/*/properties/**,/v1/tenants/*/property-units,/v1/tenants/*/property-units/**
+        - id: lending-tenant-loans
+          uri: ${LENDING_URL:http://localhost:8083}
+          predicates:
+            - Path=/v1/tenants/*/loans,/v1/tenants/*/loans/**
+        - id: entity-builder-tenant-catalog
+          uri: ${ENTITY_BUILDER_URL:http://localhost:8081}
+          predicates:
+            - Path=/v1/tenants/*/catalog,/v1/tenants/*/catalog/**
+        - id: entity-builder-tenant-search
+          uri: ${ENTITY_BUILDER_URL:http://localhost:8081}
+          predicates:
+            - Path=/v1/tenants/*/search,/v1/tenants/*/search/**
         - id: entity-builder-tenant-records
           uri: ${ENTITY_BUILDER_URL:http://localhost:8081}
           predicates:
@@ -38,6 +62,10 @@ spring:
           uri: ${ENTITY_BUILDER_URL:http://localhost:8081}
           predicates:
             - Path=/v1/entities,/v1/entities/**
+        - id: entity-builder-form-layout-templates
+          uri: ${ENTITY_BUILDER_URL:http://localhost:8081}
+          predicates:
+            - Path=/v1/form-layout-templates,/v1/form-layout-templates/**
         # IAM
         - id: iam-auth
           uri: ${IAM_URL:http://localhost:8080}

@@ -1,0 +1,97 @@
+{
+  "version": 1,
+  "manifestKey": "location",
+  "entity": {
+    "name": "Location",
+    "slug": "location",
+    "categoryKey": "master_data",
+    "description": "Physical address; core-org API; external_id = location_id.",
+    "defaultDisplayFieldSlug": "location_name"
+  },
+  "fields": [
+    {
+      "name": "Location name",
+      "slug": "location_name",
+      "sortOrder": 10,
+      "fieldType": "string",
+      "required": true,
+      "pii": false,
+      "config": {
+        "storage": "CORE_DOMAIN",
+        "coreBinding": { "service": "core-org", "column": "location_name" }
+      }
+    },
+    {
+      "name": "Address line 1",
+      "slug": "address_line_1",
+      "sortOrder": 20,
+      "fieldType": "string",
+      "required": false,
+      "pii": false,
+      "config": {
+        "storage": "CORE_DOMAIN",
+        "coreBinding": { "service": "core-org", "column": "address_line_1" }
+      }
+    },
+    {
+      "name": "City",
+      "slug": "city",
+      "sortOrder": 30,
+      "fieldType": "string",
+      "required": false,
+      "pii": false,
+      "config": {
+        "storage": "CORE_DOMAIN",
+        "coreBinding": { "service": "core-org", "column": "city" }
+      }
+    },
+    {
+      "name": "State / province",
+      "slug": "state_province",
+      "sortOrder": 40,
+      "fieldType": "string",
+      "required": false,
+      "pii": false,
+      "config": {
+        "storage": "CORE_DOMAIN",
+        "coreBinding": { "service": "core-org", "column": "state_province" }
+      }
+    },
+    {
+      "name": "Postal code",
+      "slug": "postal_code",
+      "sortOrder": 50,
+      "fieldType": "string",
+      "required": false,
+      "pii": false,
+      "config": {
+        "storage": "CORE_DOMAIN",
+        "coreBinding": { "service": "core-org", "column": "postal_code" }
+      }
+    },
+    {
+      "name": "Country code",
+      "slug": "country_code",
+      "sortOrder": 60,
+      "fieldType": "string",
+      "required": true,
+      "pii": false,
+      "config": {
+        "storage": "CORE_DOMAIN",
+        "coreBinding": { "service": "core-org", "column": "country_code" }
+      }
+    },
+    {
+      "name": "Region",
+      "slug": "region_id",
+      "sortOrder": 70,
+      "fieldType": "string",
+      "required": false,
+      "pii": false,
+      "config": {
+        "storage": "CORE_DOMAIN",
+        "coreBinding": { "service": "core-org", "column": "region_id" }
+      }
+    }
+  ]
+}

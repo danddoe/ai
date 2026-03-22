@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "manifestKey": "company",
+  "entity": {
+    "name": "Company",
+    "slug": "company",
+    "categoryKey": "master_data",
+    "description": "Legal entity; core columns in core-org; tenant extensions in entity_record_values (external_id = company_id).",
+    "defaultDisplayFieldSlug": "company_name"
+  },
+  "fields": [
+    {
+      "name": "Parent company",
+      "slug": "parent_company_id",
+      "sortOrder": 10,
+      "fieldType": "string",
+      "required": false,
+      "pii": false,
+      "config": {
+        "storage": "CORE_DOMAIN",
+        "coreBinding": { "service": "core-org", "column": "parent_company_id" },
+        "readOnly": false
+      }
+    },
+    {
+      "name": "Company name",
+      "slug": "company_name",
+      "sortOrder": 20,
+      "fieldType": "string",
+      "required": true,
+      "pii": false,
+      "config": {
+        "storage": "CORE_DOMAIN",
+        "coreBinding": { "service": "core-org", "column": "company_name" }
+      }
+    },
+    {
+      "name": "Ownership %",
+      "slug": "ownership_pct",
+      "sortOrder": 30,
+      "fieldType": "number",
+      "required": false,
+      "pii": false,
+      "config": {
+        "storage": "CORE_DOMAIN",
+        "coreBinding": { "service": "core-org", "column": "ownership_pct" }
+      }
+    },
+    {
+      "name": "Base currency",
+      "slug": "base_currency",
+      "sortOrder": 40,
+      "fieldType": "string",
+      "required": true,
+      "pii": false,
+      "config": {
+        "storage": "CORE_DOMAIN",
+        "coreBinding": { "service": "core-org", "column": "base_currency" }
+      }
+    },
+    {
+      "name": "Extension notes",
+      "slug": "extension_notes",
+      "sortOrder": 100,
+      "fieldType": "string",
+      "required": false,
+      "pii": false,
+      "config": { "storage": "EAV_EXTENSION" }
+    }
+  ]
+}

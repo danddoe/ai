@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "manifestKey": "region",
+  "entity": {
+    "name": "Region",
+    "slug": "region",
+    "categoryKey": "master_data",
+    "description": "Tenant-specific region hierarchy; core-org API; external_id = region_id.",
+    "defaultDisplayFieldSlug": "region_name"
+  },
+  "fields": [
+    {
+      "name": "Parent region",
+      "slug": "parent_region_id",
+      "sortOrder": 10,
+      "fieldType": "string",
+      "required": false,
+      "pii": false,
+      "config": {
+        "storage": "CORE_DOMAIN",
+        "coreBinding": { "service": "core-org", "column": "parent_region_id" }
+      }
+    },
+    {
+      "name": "Region code",
+      "slug": "region_code",
+      "sortOrder": 20,
+      "fieldType": "string",
+      "required": true,
+      "pii": false,
+      "config": {
+        "storage": "CORE_DOMAIN",
+        "coreBinding": { "service": "core-org", "column": "region_code" }
+      }
+    },
+    {
+      "name": "Region name",
+      "slug": "region_name",
+      "sortOrder": 30,
+      "fieldType": "string",
+      "required": true,
+      "pii": false,
+      "config": {
+        "storage": "CORE_DOMAIN",
+        "coreBinding": { "service": "core-org", "column": "region_name" }
+      }
+    }
+  ]
+}
