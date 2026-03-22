@@ -3,6 +3,7 @@ package com.erp.entitybuilder.web.v1;
 import com.erp.entitybuilder.service.RecordsService;
 import com.erp.entitybuilder.web.v1.dto.PageResponse;
 import com.erp.entitybuilder.web.v1.dto.RecordDtos;
+import com.erp.entitybuilder.web.v1.dto.RecordQueryDtos;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -30,6 +31,7 @@ public class RecordsController {
             @PathVariable UUID tenantId,
             @PathVariable UUID entityId,
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            @RequestHeader(value = "X-Correlation-ID", required = false) String correlationIdHeader,
             @Valid @RequestBody RecordDtos.CreateRecordRequest req
     ) {
         UUID userId = SecurityUtil.principal().getUserId();
@@ -44,10 +46,12 @@ public class RecordsController {
                 userId,
                 entityId,
                 req.getExternalId(),
+                req.getBusinessDocumentNumber(),
                 req.getValues(),
                 links,
                 idempotencyKey,
-                piiReadPermission
+                piiReadPermission,
+                AuditHttp.parseCorrelationId(correlationIdHeader)
         );
         return ResponseEntity.status(HttpStatus.CREATED).body(rr.getRecordDto());
     }
@@ -63,6 +67,56 @@ public class RecordsController {
         boolean piiReadPermission = SecurityUtil.hasAuthority("entity_builder:pii:read");
         var pr = recordsService.listRecords(tenantId, entityId, page, pageSize, piiReadPermission);
         return new PageResponse<>(pr.items(), pr.page(), pr.pageSize(), pr.total());
+    }
+
+    /**
+     * Structured JSON filters on field values (ranges, comparisons, text contains). Omit {@code filter} to match all records.
+     */
+    @PostMapping("/query")
+    @PreAuthorize("(hasAuthority('entity_builder:records:read') and @entityBuilderSecurity.isTenant(#tenantId)) or @entityBuilderSecurity.hasCrossTenantAdminAuthority()")
+    public PageResponse<RecordDtos.RecordDto> query(
+            @PathVariable UUID tenantId,
+            @PathVariable UUID entityId,
+            @Valid @RequestBody RecordQueryDtos.RecordQueryRequest req
+    ) {
+        boolean piiReadPermission = SecurityUtil.hasAuthority("entity_builder:pii:read");
+        var pr = recordsService.queryRecords(tenantId, entityId, req, piiReadPermission);
+        return new PageResponse<>(pr.items(), pr.page(), pr.pageSize(), pr.total());
+    }
+
+    @GetMapping("/lookup")
+    @PreAuthorize("(hasAuthority('entity_builder:records:read') and @entityBuilderSecurity.isTenant(#tenantId)) or @entityBuilderSecurity.hasCrossTenantAdminAuthority()")
+    public RecordDtos.RecordLookupResponse lookup(
+            @PathVariable UUID tenantId,
+            @PathVariable UUID entityId,
+            @RequestParam String term,
+            @RequestParam(defaultValue = "20") int limit,
+            @RequestParam(required = false) List<String> displaySlugs
+    ) {
+        boolean piiReadPermission = SecurityUtil.hasAuthority("entity_builder:pii:read");
+        return recordsService.lookupRecords(tenantId, entityId, term, limit, displaySlugs, piiReadPermission);
+    }
+
+    @GetMapping("/by-external-id/{externalId}")
+    @PreAuthorize("(hasAuthority('entity_builder:records:read') and @entityBuilderSecurity.isTenant(#tenantId)) or @entityBuilderSecurity.hasCrossTenantAdminAuthority()")
+    public RecordDtos.RecordDto getByExternalId(
+            @PathVariable UUID tenantId,
+            @PathVariable UUID entityId,
+            @PathVariable String externalId
+    ) {
+        boolean piiReadPermission = SecurityUtil.hasAuthority("entity_builder:pii:read");
+        return recordsService.getRecordByExternalId(tenantId, entityId, externalId, piiReadPermission).getRecordDto();
+    }
+
+    @GetMapping("/by-business-document-number/{businessDocumentNumber}")
+    @PreAuthorize("(hasAuthority('entity_builder:records:read') and @entityBuilderSecurity.isTenant(#tenantId)) or @entityBuilderSecurity.hasCrossTenantAdminAuthority()")
+    public RecordDtos.RecordDto getByBusinessDocumentNumber(
+            @PathVariable UUID tenantId,
+            @PathVariable UUID entityId,
+            @PathVariable String businessDocumentNumber
+    ) {
+        boolean piiReadPermission = SecurityUtil.hasAuthority("entity_builder:pii:read");
+        return recordsService.getRecordByBusinessDocumentNumber(tenantId, entityId, businessDocumentNumber, piiReadPermission).getRecordDto();
     }
 
     @GetMapping("/{recordId}")
@@ -83,13 +137,15 @@ public class RecordsController {
             @PathVariable UUID tenantId,
             @PathVariable UUID entityId,
             @PathVariable UUID recordId,
+            @RequestHeader(value = "X-Correlation-ID", required = false) String correlationIdHeader,
             @Valid @RequestBody RecordDtos.UpdateRecordRequest req
     ) {
         UUID userId = SecurityUtil.principal().getUserId();
         boolean piiReadPermission = SecurityUtil.hasAuthority("entity_builder:pii:read");
         var rr = recordsService.updateRecord(tenantId, userId, entityId, recordId, req.getValues(),
                 req.getLinks() != null ? req.getLinks().stream().map(l -> new RecordsService.LinkInput(l.getRelationshipSlug(), l.getToRecordId())).toList() : null,
-                piiReadPermission);
+                piiReadPermission,
+                AuditHttp.parseCorrelationId(correlationIdHeader));
         return rr.getRecordDto();
     }
 
@@ -99,9 +155,11 @@ public class RecordsController {
     public void delete(
             @PathVariable UUID tenantId,
             @PathVariable UUID entityId,
-            @PathVariable UUID recordId
+            @PathVariable UUID recordId,
+            @RequestHeader(value = "X-Correlation-ID", required = false) String correlationIdHeader
     ) {
-        recordsService.deleteRecord(tenantId, entityId, recordId);
+        UUID userId = SecurityUtil.principal().getUserId();
+        recordsService.deleteRecord(tenantId, userId, entityId, recordId, AuditHttp.parseCorrelationId(correlationIdHeader));
     }
 }
 

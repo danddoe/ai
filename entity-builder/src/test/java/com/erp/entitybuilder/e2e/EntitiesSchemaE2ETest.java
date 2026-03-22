@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.*;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -26,12 +27,12 @@ class EntitiesSchemaE2ETest extends AbstractEntityBuilderE2ETest {
         var headers = authHeaders(userId, tenantId, SCHEMA_PERMS);
 
         // Create entity
-        Map<String, Object> create = Map.of(
-                "name", "Customer",
-                "slug", "customer",
-                "description", "Customer entity",
-                "status", "ACTIVE"
-        );
+        Map<String, Object> create = new HashMap<>();
+        create.put("name", "Customer");
+        create.put("slug", "customer");
+        create.put("description", "Customer entity");
+        create.put("status", "ACTIVE");
+        create.put("categoryKey", "accounts_receivable");
         ResponseEntity<Map> createResp = restTemplate.exchange(
                 baseUrl + "/v1/entities",
                 HttpMethod.POST,
@@ -43,6 +44,52 @@ class EntitiesSchemaE2ETest extends AbstractEntityBuilderE2ETest {
         assertThat(entityId).isNotBlank();
         assertThat(createResp.getBody().get("name")).isEqualTo("Customer");
         assertThat(createResp.getBody().get("slug")).isEqualTo("customer");
+        assertThat(createResp.getBody().get("categoryKey")).isEqualTo("accounts_receivable");
+
+        // Invalid categoryKey on create
+        Map<String, Object> badCat = new HashMap<>();
+        badCat.put("name", "Bad");
+        badCat.put("slug", "bad-cat");
+        badCat.put("status", "ACTIVE");
+        badCat.put("categoryKey", "unknown_module");
+        ResponseEntity<Map> badResp = restTemplate.exchange(
+                baseUrl + "/v1/entities",
+                HttpMethod.POST,
+                new HttpEntity<>(badCat, headers),
+                Map.class
+        );
+        assertThat(badResp.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+        // List filtered by categoryKey
+        ResponseEntity<List> listAr = restTemplate.exchange(
+                baseUrl + "/v1/entities?categoryKey=accounts_receivable",
+                HttpMethod.GET,
+                new HttpEntity<>(null, headers),
+                List.class
+        );
+        assertThat(listAr.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(listAr.getBody()).hasSize(1);
+        assertThat(((Map<?, ?>) listAr.getBody().get(0)).get("slug")).isEqualTo("customer");
+
+        ResponseEntity<List> listAp = restTemplate.exchange(
+                baseUrl + "/v1/entities?categoryKey=accounts_payable",
+                HttpMethod.GET,
+                new HttpEntity<>(null, headers),
+                List.class
+        );
+        assertThat(listAp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(listAp.getBody()).isEmpty();
+
+        // Search by q (name contains)
+        ResponseEntity<List> listQ = restTemplate.exchange(
+                baseUrl + "/v1/entities?q=Cust",
+                HttpMethod.GET,
+                new HttpEntity<>(null, headers),
+                List.class
+        );
+        assertThat(listQ.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(listQ.getBody()).hasSize(1);
+        assertThat(((Map<?, ?>) listQ.getBody().get(0)).get("slug")).isEqualTo("customer");
 
         // Get entity
         ResponseEntity<Map> getResp = restTemplate.exchange(
@@ -55,7 +102,10 @@ class EntitiesSchemaE2ETest extends AbstractEntityBuilderE2ETest {
         assertThat(getResp.getBody().get("name")).isEqualTo("Customer");
 
         // Update entity
-        Map<String, Object> update = Map.of("name", "Customer Updated", "description", "Updated description");
+        Map<String, Object> update = new HashMap<>();
+        update.put("name", "Customer Updated");
+        update.put("description", "Updated description");
+        update.put("categoryKey", "general_ledger");
         ResponseEntity<Map> updateResp = restTemplate.exchange(
                 baseUrl + "/v1/entities/" + entityId,
                 HttpMethod.PATCH,
@@ -64,6 +114,17 @@ class EntitiesSchemaE2ETest extends AbstractEntityBuilderE2ETest {
         );
         assertThat(updateResp.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(updateResp.getBody().get("name")).isEqualTo("Customer Updated");
+        assertThat(updateResp.getBody().get("categoryKey")).isEqualTo("general_ledger");
+
+        Map<String, Object> clearCat = Map.of("clearCategoryKey", true);
+        ResponseEntity<Map> clearResp = restTemplate.exchange(
+                baseUrl + "/v1/entities/" + entityId,
+                HttpMethod.PATCH,
+                new HttpEntity<>(clearCat, headers),
+                Map.class
+        );
+        assertThat(clearResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(clearResp.getBody().get("categoryKey")).isNull();
 
         // Delete entity
         ResponseEntity<Void> deleteResp = restTemplate.exchange(

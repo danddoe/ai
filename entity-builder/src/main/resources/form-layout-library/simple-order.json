@@ -1,0 +1,38 @@
+{
+  "version": 2,
+  "regions": [
+    {
+      "id": "reg-header",
+      "role": "header",
+      "title": "Order",
+      "tabGroupId": null,
+      "rows": [
+        {
+          "id": "row-1",
+          "columns": [
+            {
+              "id": "col-1",
+              "span": 12,
+              "items": [
+                {
+                  "id": "item-order-number",
+                  "fieldId": null,
+                  "fieldSlug": "order_number",
+                  "presentation": {
+                    "label": null,
+                    "placeholder": "",
+                    "helpText": "",
+                    "readOnly": false,
+                    "hidden": false,
+                    "width": "full",
+                    "componentHint": "default"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

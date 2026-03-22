@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.*;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -26,7 +27,11 @@ class EntityExtensionsE2ETest extends AbstractEntityBuilderE2ETest {
         var headers = authHeaders(userId, tenantId, SCHEMA_PERMS);
 
         // Create base entity
-        Map<String, Object> baseEntity = Map.of("name", "Contact", "slug", "contact", "status", "ACTIVE");
+        Map<String, Object> baseEntity = new HashMap<>();
+        baseEntity.put("name", "Contact");
+        baseEntity.put("slug", "contact");
+        baseEntity.put("status", "ACTIVE");
+        baseEntity.put("categoryKey", "entity_builder");
         ResponseEntity<Map> baseResp = restTemplate.exchange(
                 baseUrl + "/v1/entities",
                 HttpMethod.POST,
@@ -53,6 +58,7 @@ class EntityExtensionsE2ETest extends AbstractEntityBuilderE2ETest {
         String extensionId = String.valueOf(createResp.getBody().get("id"));
         assertThat(createResp.getBody().get("baseEntityId")).isEqualTo(baseEntityId);
         assertThat(createResp.getBody().get("slug")).isEqualTo("contact-custom");
+        assertThat(createResp.getBody().get("categoryKey")).isEqualTo("entity_builder");
 
         // List extensions
         ResponseEntity<List> listResp = restTemplate.exchange(

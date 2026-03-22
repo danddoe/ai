@@ -1,0 +1,26 @@
+{
+  "version": 2,
+  "regions": [
+    {
+      "id": "reg-header",
+      "role": "header",
+      "title": "Summary",
+      "tabGroupId": null,
+      "rows": []
+    },
+    {
+      "id": "reg-tab-main",
+      "role": "tab",
+      "title": "General",
+      "tabGroupId": "main-tabs",
+      "rows": []
+    },
+    {
+      "id": "reg-detail",
+      "role": "detail",
+      "title": "Details",
+      "tabGroupId": null,
+      "rows": []
+    }
+  ]
+}

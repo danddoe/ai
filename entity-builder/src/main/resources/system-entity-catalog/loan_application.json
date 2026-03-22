@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "manifestKey": "loan_application",
+  "entity": {
+    "name": "Loan application",
+    "slug": "loan_application",
+    "categoryKey": "lending",
+    "description": "Hybrid pattern: core state in loans-module service; tenant extensions in entity_record_values (external_id = loan id).",
+    "defaultDisplayFieldSlug": "branch_notes"
+  },
+  "fields": [
+    {
+      "name": "Requested amount",
+      "slug": "requested_amount",
+      "sortOrder": 0,
+      "fieldType": "number",
+      "required": true,
+      "pii": false,
+      "config": {
+        "storage": "CORE_DOMAIN",
+        "coreBinding": { "service": "loans-module", "column": "requested_amount" }
+      }
+    },
+    {
+      "name": "Status",
+      "slug": "status",
+      "fieldType": "string",
+      "required": true,
+      "pii": false,
+      "config": {
+        "storage": "CORE_DOMAIN",
+        "coreBinding": { "service": "loans-module", "column": "status" }
+      }
+    },
+    {
+      "name": "Product code",
+      "slug": "product_code",
+      "sortOrder": 20,
+      "fieldType": "string",
+      "required": false,
+      "pii": false,
+      "config": {
+        "storage": "CORE_DOMAIN",
+        "coreBinding": { "service": "loans-module", "column": "product_code" }
+      }
+    },
+    {
+      "name": "Branch notes",
+      "slug": "branch_notes",
+      "sortOrder": 30,
+      "fieldType": "string",
+      "required": false,
+      "pii": false,
+      "config": { "storage": "EAV_EXTENSION" }
+    }
+  ]
+}

@@ -64,6 +64,12 @@ class RecordsE2ETest extends AbstractEntityBuilderE2ETest {
         String recordId = String.valueOf(createResp.getBody().get("id"));
         assertThat(createResp.getBody().get("values")).isNotNull();
 
+        UUID rid = UUID.fromString(recordId);
+        Integer auditAfterCreate = jdbcTemplate.queryForObject(
+                "SELECT count(*)::int FROM audit_log WHERE tenant_id = ? AND resource_id = ? AND source_service = ?",
+                Integer.class, tenantId, rid, "entity-builder");
+        assertThat(auditAfterCreate).isEqualTo(1);
+
         // List records
         ResponseEntity<Map> listResp = restTemplate.exchange(
                 baseUrl + "/v1/tenants/" + tenantId + "/entities/" + entityId + "/records?page=1&pageSize=10",
@@ -97,6 +103,45 @@ class RecordsE2ETest extends AbstractEntityBuilderE2ETest {
         assertThat(updateResp.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(updateResp.getBody().get("values")).isNotNull();
 
+        Integer auditAfterUpdate = jdbcTemplate.queryForObject(
+                "SELECT count(*)::int FROM audit_log WHERE tenant_id = ? AND resource_id = ? AND source_service = ?",
+                Integer.class, tenantId, rid, "entity-builder");
+        assertThat(auditAfterUpdate).isEqualTo(2);
+
+        String recordAuditUrl = baseUrl + "/v1/tenants/" + tenantId + "/entities/" + entityId + "/records/" + recordId + "/audit-events?page=1&pageSize=10";
+        ResponseEntity<Map> auditListResp = restTemplate.exchange(
+                recordAuditUrl,
+                HttpMethod.GET,
+                new HttpEntity<>(null, headers),
+                Map.class
+        );
+        assertThat(auditListResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> auditItems = (List<Map<String, Object>>) auditListResp.getBody().get("items");
+        assertThat(auditItems).hasSize(2);
+        assertThat(auditListResp.getBody().get("total")).isEqualTo(2);
+
+        String entityAuditUrl = baseUrl + "/v1/tenants/" + tenantId + "/entities/" + entityId + "/audit-events?page=1&pageSize=50";
+        ResponseEntity<Map> entityAuditResp = restTemplate.exchange(
+                entityAuditUrl,
+                HttpMethod.GET,
+                new HttpEntity<>(null, headers),
+                Map.class
+        );
+        assertThat(entityAuditResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> entityAuditItems = (List<Map<String, Object>>) entityAuditResp.getBody().get("items");
+        assertThat(entityAuditItems.size()).isGreaterThanOrEqualTo(2);
+
+        UUID wrongEntityId = UUID.randomUUID();
+        ResponseEntity<Map> wrongEntityAudit = restTemplate.exchange(
+                baseUrl + "/v1/tenants/" + tenantId + "/entities/" + wrongEntityId + "/records/" + recordId + "/audit-events",
+                HttpMethod.GET,
+                new HttpEntity<>(null, headers),
+                Map.class
+        );
+        assertThat(wrongEntityAudit.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
         // Delete record
         ResponseEntity<Void> deleteResp = restTemplate.exchange(
                 baseUrl + "/v1/tenants/" + tenantId + "/entities/" + entityId + "/records/" + recordId,
@@ -105,6 +150,11 @@ class RecordsE2ETest extends AbstractEntityBuilderE2ETest {
                 Void.class
         );
         assertThat(deleteResp.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+
+        Integer auditAfterDelete = jdbcTemplate.queryForObject(
+                "SELECT count(*)::int FROM audit_log WHERE tenant_id = ? AND resource_id = ? AND source_service = ?",
+                Integer.class, tenantId, rid, "entity-builder");
+        assertThat(auditAfterDelete).isEqualTo(3);
 
         // Verify deleted
         ResponseEntity<Map> getAfterResp = restTemplate.exchange(

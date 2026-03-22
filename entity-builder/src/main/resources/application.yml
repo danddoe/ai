@@ -1,6 +1,11 @@
 spring:
   application:
     name: entity-builder
+  # DevTools classpath restart + Flyway on CockroachDB strands a flyway-lock row → InsertRowLock / deadlock warnings.
+  # LiveReload still works; full restart: stop and run bootRun again. Override: SPRING_DEVTOOLS_RESTART_ENABLED=true
+  devtools:
+    restart:
+      enabled: false
   datasource:
     url: ${DATABASE_URL:jdbc:postgresql://localhost:26257/defaultdb?sslmode=disable}
     username: ${DATABASE_USER:root}

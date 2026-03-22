@@ -1,4 +1,4 @@
-﻿# Gradle
+# Gradle
 .gradle/
 build/
 **/build/
@@ -16,3 +16,7 @@ cockroachdb/data/
 # OS
 Thumbs.db
 .DS_Store
+
+# Frontend (erp-portal)
+erp-portal/node_modules/
+erp-portal/dist/

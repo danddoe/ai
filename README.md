@@ -6,15 +6,21 @@ A modern AI tool and ERP backend.
 
 The **iam** module is a multi-tenant IAM service built with **Java 17**, **Spring Boot**, and **Gradle (Groovy)**. It uses CockroachDB and JWT for future ERP modules.
 
-- **Requirements:** Java 17+, CockroachDB (or PostgreSQL)
+- **Requirements:** Java 17+, **CockroachDB** (standard; migrations avoid PostgreSQL-only DDL)
 - **Build:** `./gradlew :iam:build`
 - **Run (with DevTools auto-reload):** `./gradlew :iam:bootRun`
 - **Details:** See [iam/README.md](iam/README.md)
-- **CockroachDB local setup:** See [cockroachdb/README.md](cockroachdb/README.md)
+- **CockroachDB local setup:** See [cockroachdb/README.md](cockroachdb/README.md) (pinned **v25.2.15** via Docker Compose or native binary)
+
+**JWT contract (IAM ↔ resource servers):** [design/JWT_access_token_contract.md](design/JWT_access_token_contract.md). Shared test fixtures live in **`jwt-contract-tck`**; IAM, entity-builder, and global-search run `JwtAccessTokenContractTest` against TCK-minted tokens.
 
 ## API gateway (BFF)
 
-**api-gateway** is a **Spring Cloud Gateway** reverse proxy (port **8000** by default) that routes to IAM (**8080**) and entity-builder (**8081**). Use this on Windows without Docker; see [api-gateway/README.md](api-gateway/README.md). For a Docker-based gateway, see [kong/README.md](kong/README.md).
+**api-gateway** is a **Spring Cloud Gateway** reverse proxy (port **8000** by default) that routes to IAM (**8080**), entity-builder (**8081**), and **global-search** (**8082**, omnibox). Use this on Windows without Docker; see [api-gateway/README.md](api-gateway/README.md). For a Docker-based gateway, see [kong/README.md](kong/README.md).
+
+## ERP portal (React)
+
+**erp-portal** is a Vite + React + TypeScript SPA (port **5173**). It logs in through the gateway and calls protected APIs. See [erp-portal/README.md](erp-portal/README.md). For IAM httpOnly refresh cookies, set `AUTH_REFRESH_TOKEN_IN_COOKIE=true` when starting IAM.
 
 ## Overview
 

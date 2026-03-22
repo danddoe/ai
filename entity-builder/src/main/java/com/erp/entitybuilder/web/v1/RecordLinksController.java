@@ -33,9 +33,12 @@ public class RecordLinksController {
     public void create(
             @PathVariable UUID tenantId,
             @PathVariable UUID recordId,
+            @RequestHeader(value = "X-Correlation-ID", required = false) String correlationIdHeader,
             @Valid @RequestBody RecordDtos.LinkInput req
     ) {
-        recordsService.addLink(tenantId, recordId, req.getRelationshipSlug(), req.getToRecordId());
+        UUID userId = SecurityUtil.principal().getUserId();
+        recordsService.addLink(tenantId, userId, recordId, req.getRelationshipSlug(), req.getToRecordId(),
+                AuditHttp.parseCorrelationId(correlationIdHeader));
     }
 
     @DeleteMapping
@@ -44,9 +47,12 @@ public class RecordLinksController {
     public void delete(
             @PathVariable UUID tenantId,
             @PathVariable UUID recordId,
+            @RequestHeader(value = "X-Correlation-ID", required = false) String correlationIdHeader,
             @Valid @RequestBody RecordDtos.LinkInput req
     ) {
-        recordsService.deleteLink(tenantId, recordId, req.getRelationshipSlug(), req.getToRecordId());
+        UUID userId = SecurityUtil.principal().getUserId();
+        recordsService.deleteLink(tenantId, userId, recordId, req.getRelationshipSlug(), req.getToRecordId(),
+                AuditHttp.parseCorrelationId(correlationIdHeader));
     }
 }
 

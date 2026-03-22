@@ -1,0 +1,16 @@
+[
+  {
+    "templateKey": "blank-v2",
+    "title": "Blank (regions v2)",
+    "description": "Empty header, tab, and detail regions — start from structure only.",
+    "tags": ["blank", "v2"],
+    "layoutFile": "blank-v2.json"
+  },
+  {
+    "templateKey": "simple-order",
+    "title": "Simple order header",
+    "description": "One header row with a single field placeholder (maps field slug order_number when present).",
+    "tags": ["sample", "v2"],
+    "layoutFile": "simple-order.json"
+  }
+]

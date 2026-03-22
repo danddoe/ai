@@ -1,0 +1,80 @@
+package com.erp.globalsearch.security;
+
+import com.erp.globalsearch.service.JwtService;
+import com.erp.globalsearch.service.JwtService.InvalidTokenException;
+import com.erp.globalsearch.service.JwtService.JwtClaims;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
+import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
+import org.springframework.web.filter.OncePerRequestFilter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+@Component
+public class JwtAuthenticationFilter extends OncePerRequestFilter {
+
+    private static final Logger log = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
+
+    private final JwtService jwtService;
+
+    public JwtAuthenticationFilter(JwtService jwtService) {
+        this.jwtService = jwtService;
+    }
+
+    @Override
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+            throws ServletException, IOException {
+        try {
+            String token = extractToken(request);
+            if (StringUtils.hasText(token)) {
+                JwtClaims claims = jwtService.parseToken(token);
+                if (!claims.refresh()) {
+                    List<SimpleGrantedAuthority> authorities = Stream.concat(
+                                    claims.roles().stream().map(r -> new SimpleGrantedAuthority("ROLE_" + r)),
+                                    claims.permissions().stream().map(SimpleGrantedAuthority::new)
+                            )
+                            .collect(Collectors.toList());
+
+                    TenantPrincipal principal = new TenantPrincipal(
+                            claims.userId(),
+                            claims.tenantId(),
+                            claims.email(),
+                            claims.roles(),
+                            claims.permissions()
+                    );
+
+                    UsernamePasswordAuthenticationToken auth =
+                            new UsernamePasswordAuthenticationToken(principal, null, authorities);
+                    auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                    SecurityContextHolder.getContext().setAuthentication(auth);
+                }
+            }
+        } catch (InvalidTokenException ignored) {
+            // leave unauthenticated
+        } catch (RuntimeException e) {
+            // JJWT / authority edge cases must not become HTTP 500 on the BFF
+            log.debug("JWT authentication skipped: {}", e.toString());
+        }
+        filterChain.doFilter(request, response);
+    }
+
+    private String extractToken(HttpServletRequest request) {
+        String bearer = request.getHeader("Authorization");
+        if (StringUtils.hasText(bearer) && bearer.startsWith("Bearer ")) {
+            return bearer.substring(7);
+        }
+        return null;
+    }
+}

@@ -42,6 +42,42 @@ public class FormLayoutDtos {
         public void setDefault(boolean aDefault) { isDefault = aDefault; }
     }
 
+    public static class CreateFromTemplateRequest {
+        @NotBlank
+        private String templateKey;
+
+        @NotBlank
+        @Size(max = 255)
+        private String name;
+
+        @JsonProperty("isDefault")
+        private boolean isDefault = false;
+
+        public String getTemplateKey() {
+            return templateKey;
+        }
+
+        public void setTemplateKey(String templateKey) {
+            this.templateKey = templateKey;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public void setName(String name) {
+            this.name = name;
+        }
+
+        public boolean isDefault() {
+            return isDefault;
+        }
+
+        public void setDefault(boolean aDefault) {
+            isDefault = aDefault;
+        }
+    }
+
     public static class UpdateFormLayoutRequest {
         @Size(max = 255)
         private String name;

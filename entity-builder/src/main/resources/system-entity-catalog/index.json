@@ -1,0 +1,11 @@
+{
+  "manifests": [
+    "loan_application",
+    "company",
+    "business_unit",
+    "region",
+    "location",
+    "property",
+    "property_unit"
+  ]
+}

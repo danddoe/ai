@@ -17,9 +17,13 @@ public class EntityFieldDtos {
             String fieldType,
             boolean required,
             boolean pii,
+            int sortOrder,
+            String labelOverride,
+            String formatString,
             String status,
             Instant createdAt,
-            Instant updatedAt
+            Instant updatedAt,
+            Map<String, Object> config
     ) {}
 
     public static class CreateFieldRequest {
@@ -41,6 +45,14 @@ public class EntityFieldDtos {
         // Free-form JSONB config for validators/options; stored as JSON
         private Map<String, Object> config;
 
+        private Integer sortOrder;
+
+        @Size(max = 255)
+        private String labelOverride;
+
+        @Size(max = 500)
+        private String formatString;
+
         public String getName() { return name; }
         public void setName(String name) { this.name = name; }
         public String getSlug() { return slug; }
@@ -53,6 +65,12 @@ public class EntityFieldDtos {
         public void setPii(boolean pii) { this.pii = pii; }
         public Map<String, Object> getConfig() { return config; }
         public void setConfig(Map<String, Object> config) { this.config = config; }
+        public Integer getSortOrder() { return sortOrder; }
+        public void setSortOrder(Integer sortOrder) { this.sortOrder = sortOrder; }
+        public String getLabelOverride() { return labelOverride; }
+        public void setLabelOverride(String labelOverride) { this.labelOverride = labelOverride; }
+        public String getFormatString() { return formatString; }
+        public void setFormatString(String formatString) { this.formatString = formatString; }
     }
 
     public static class UpdateFieldRequest {
@@ -70,6 +88,14 @@ public class EntityFieldDtos {
 
         private Map<String, Object> config;
 
+        private Integer sortOrder;
+
+        @Size(max = 255)
+        private String labelOverride;
+
+        @Size(max = 500)
+        private String formatString;
+
         public String getName() { return name; }
         public void setName(String name) { this.name = name; }
         public String getSlug() { return slug; }
@@ -82,6 +108,12 @@ public class EntityFieldDtos {
         public void setPii(Boolean pii) { this.pii = pii; }
         public Map<String, Object> getConfig() { return config; }
         public void setConfig(Map<String, Object> config) { this.config = config; }
+        public Integer getSortOrder() { return sortOrder; }
+        public void setSortOrder(Integer sortOrder) { this.sortOrder = sortOrder; }
+        public String getLabelOverride() { return labelOverride; }
+        public void setLabelOverride(String labelOverride) { this.labelOverride = labelOverride; }
+        public String getFormatString() { return formatString; }
+        public void setFormatString(String formatString) { this.formatString = formatString; }
     }
 }
 

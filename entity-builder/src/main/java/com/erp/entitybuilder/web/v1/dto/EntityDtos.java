@@ -15,7 +15,9 @@ public class EntityDtos {
             String slug,
             String description,
             UUID baseEntityId,
+            String defaultDisplayFieldSlug,
             String status,
+            String categoryKey,
             Instant createdAt,
             Instant updatedAt
     ) {}
@@ -35,6 +37,9 @@ public class EntityDtos {
         @Size(max = 50)
         private String status = "ACTIVE";
 
+        @Size(max = 64)
+        private String categoryKey;
+
         public String getName() { return name; }
         public void setName(String name) { this.name = name; }
         public String getSlug() { return slug; }
@@ -43,6 +48,8 @@ public class EntityDtos {
         public void setDescription(String description) { this.description = description; }
         public String getStatus() { return status; }
         public void setStatus(String status) { this.status = status; }
+        public String getCategoryKey() { return categoryKey; }
+        public void setCategoryKey(String categoryKey) { this.categoryKey = categoryKey; }
     }
 
     public static class UpdateEntityRequest {
@@ -58,6 +65,18 @@ public class EntityDtos {
         @Size(max = 50)
         private String status;
 
+        /** When true, clears {@code defaultDisplayFieldSlug}. Ignored if {@code defaultDisplayFieldSlug} is also set. */
+        private Boolean clearDefaultDisplayField;
+
+        @Size(max = 100)
+        private String defaultDisplayFieldSlug;
+
+        /** When true, clears {@code categoryKey}. */
+        private Boolean clearCategoryKey;
+
+        @Size(max = 64)
+        private String categoryKey;
+
         public String getName() { return name; }
         public void setName(String name) { this.name = name; }
         public String getSlug() { return slug; }
@@ -66,6 +85,14 @@ public class EntityDtos {
         public void setDescription(String description) { this.description = description; }
         public String getStatus() { return status; }
         public void setStatus(String status) { this.status = status; }
+        public Boolean getClearDefaultDisplayField() { return clearDefaultDisplayField; }
+        public void setClearDefaultDisplayField(Boolean clearDefaultDisplayField) { this.clearDefaultDisplayField = clearDefaultDisplayField; }
+        public String getDefaultDisplayFieldSlug() { return defaultDisplayFieldSlug; }
+        public void setDefaultDisplayFieldSlug(String defaultDisplayFieldSlug) { this.defaultDisplayFieldSlug = defaultDisplayFieldSlug; }
+        public Boolean getClearCategoryKey() { return clearCategoryKey; }
+        public void setClearCategoryKey(Boolean clearCategoryKey) { this.clearCategoryKey = clearCategoryKey; }
+        public String getCategoryKey() { return categoryKey; }
+        public void setCategoryKey(String categoryKey) { this.categoryKey = categoryKey; }
     }
 }
 

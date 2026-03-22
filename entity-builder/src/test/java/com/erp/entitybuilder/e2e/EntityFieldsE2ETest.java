@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.*;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -55,6 +56,17 @@ class EntityFieldsE2ETest extends AbstractEntityBuilderE2ETest {
         assertThat(createResp.getBody().get("name")).isEqualTo("Price");
         assertThat(createResp.getBody().get("fieldType")).isEqualTo("number");
 
+        // List fields
+        ResponseEntity<List> listResp = restTemplate.exchange(
+                baseUrl + "/v1/entities/" + entityId + "/fields",
+                HttpMethod.GET,
+                new HttpEntity<>(null, headers),
+                List.class
+        );
+        assertThat(listResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(listResp.getBody()).hasSize(1);
+        assertThat(((Map<?, ?>) listResp.getBody().get(0)).get("slug")).isEqualTo("price");
+
         // Get field
         ResponseEntity<Map> getResp = restTemplate.exchange(
                 baseUrl + "/v1/entities/" + entityId + "/fields/" + fieldId,
@@ -65,8 +77,11 @@ class EntityFieldsE2ETest extends AbstractEntityBuilderE2ETest {
         assertThat(getResp.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(getResp.getBody().get("slug")).isEqualTo("price");
 
-        // Update field
-        Map<String, Object> update = Map.of("name", "Unit Price", "required", false);
+        // Update field (display format for clients, e.g. number pattern)
+        Map<String, Object> update = new LinkedHashMap<>();
+        update.put("name", "Unit Price");
+        update.put("required", false);
+        update.put("formatString", "#,##0.00");
         ResponseEntity<Map> updateResp = restTemplate.exchange(
                 baseUrl + "/v1/entities/" + entityId + "/fields/" + fieldId,
                 HttpMethod.PATCH,
@@ -75,6 +90,16 @@ class EntityFieldsE2ETest extends AbstractEntityBuilderE2ETest {
         );
         assertThat(updateResp.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(updateResp.getBody().get("name")).isEqualTo("Unit Price");
+        assertThat(updateResp.getBody().get("formatString")).isEqualTo("#,##0.00");
+
+        ResponseEntity<Map> clearFormatResp = restTemplate.exchange(
+                baseUrl + "/v1/entities/" + entityId + "/fields/" + fieldId,
+                HttpMethod.PATCH,
+                new HttpEntity<>(Map.of("formatString", ""), headers),
+                Map.class
+        );
+        assertThat(clearFormatResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(clearFormatResp.getBody().get("formatString")).isNull();
 
         // Delete field
         ResponseEntity<Void> deleteResp = restTemplate.exchange(
@@ -93,5 +118,97 @@ class EntityFieldsE2ETest extends AbstractEntityBuilderE2ETest {
                 Map.class
         );
         assertThat(getAfterResp.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void endToEnd_entityFieldsSortOrderAndLabelOverride() {
+        Assumptions.assumeTrue(jdbcTemplate != null, "E2E skipped: no CockroachDB connection");
+
+        UUID userId = UUID.randomUUID();
+        UUID tenantId = UUID.randomUUID();
+        var headers = authHeaders(userId, tenantId, SCHEMA_PERMS);
+
+        Map<String, Object> createEntity = Map.of("name", "SortTest", "slug", "sort_test_entity", "status", "ACTIVE");
+        ResponseEntity<Map> entityResp = restTemplate.exchange(
+                baseUrl + "/v1/entities",
+                HttpMethod.POST,
+                new HttpEntity<>(createEntity, headers),
+                Map.class
+        );
+        assertThat(entityResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        String entityId = String.valueOf(entityResp.getBody().get("id"));
+
+        Map<String, Object> createAlpha = new LinkedHashMap<>();
+        createAlpha.put("name", "Alpha");
+        createAlpha.put("slug", "alpha");
+        createAlpha.put("fieldType", "string");
+        createAlpha.put("required", false);
+        createAlpha.put("pii", false);
+        createAlpha.put("sortOrder", 10);
+
+        Map<String, Object> createBeta = new LinkedHashMap<>();
+        createBeta.put("name", "Beta");
+        createBeta.put("slug", "beta");
+        createBeta.put("fieldType", "string");
+        createBeta.put("required", false);
+        createBeta.put("pii", false);
+        createBeta.put("sortOrder", 0);
+
+        ResponseEntity<Map> alphaResp = restTemplate.exchange(
+                baseUrl + "/v1/entities/" + entityId + "/fields",
+                HttpMethod.POST,
+                new HttpEntity<>(createAlpha, headers),
+                Map.class
+        );
+        assertThat(alphaResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        String alphaId = String.valueOf(alphaResp.getBody().get("id"));
+
+        ResponseEntity<Map> betaResp = restTemplate.exchange(
+                baseUrl + "/v1/entities/" + entityId + "/fields",
+                HttpMethod.POST,
+                new HttpEntity<>(createBeta, headers),
+                Map.class
+        );
+        assertThat(betaResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        ResponseEntity<List> listResp = restTemplate.exchange(
+                baseUrl + "/v1/entities/" + entityId + "/fields",
+                HttpMethod.GET,
+                new HttpEntity<>(null, headers),
+                List.class
+        );
+        assertThat(listResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(listResp.getBody()).hasSize(2);
+        assertThat(((Map<?, ?>) listResp.getBody().get(0)).get("slug")).isEqualTo("beta");
+        assertThat(((Map<?, ?>) listResp.getBody().get(1)).get("slug")).isEqualTo("alpha");
+
+        Map<String, Object> patchLabel = Map.of("labelOverride", "Alpha display");
+        ResponseEntity<Map> patchResp = restTemplate.exchange(
+                baseUrl + "/v1/entities/" + entityId + "/fields/" + alphaId,
+                HttpMethod.PATCH,
+                new HttpEntity<>(patchLabel, headers),
+                Map.class
+        );
+        assertThat(patchResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(patchResp.getBody().get("labelOverride")).isEqualTo("Alpha display");
+
+        ResponseEntity<Map> getResp = restTemplate.exchange(
+                baseUrl + "/v1/entities/" + entityId + "/fields/" + alphaId,
+                HttpMethod.GET,
+                new HttpEntity<>(null, headers),
+                Map.class
+        );
+        assertThat(getResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(getResp.getBody().get("labelOverride")).isEqualTo("Alpha display");
+
+        Map<String, Object> clearLabel = Map.of("labelOverride", "");
+        ResponseEntity<Map> clearResp = restTemplate.exchange(
+                baseUrl + "/v1/entities/" + entityId + "/fields/" + alphaId,
+                HttpMethod.PATCH,
+                new HttpEntity<>(clearLabel, headers),
+                Map.class
+        );
+        assertThat(clearResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(clearResp.getBody().get("labelOverride")).isNull();
     }
 }
