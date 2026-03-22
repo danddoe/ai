@@ -23,16 +23,30 @@ public class EntitiesController {
 
     @GetMapping
     @PreAuthorize("hasAuthority('entity_builder:schema:read')")
-    public List<EntityDtos.EntityDto> list() {
+    public List<EntityDtos.EntityDto> list(
+            @RequestParam(required = false) String categoryKey,
+            @RequestParam(required = false) String q
+    ) {
         UUID tenantId = SecurityUtil.principal().getTenantId();
-        return schemaService.listEntities(tenantId).stream().map(EntitiesController::toDto).toList();
+        return schemaService.listEntities(tenantId, Optional.ofNullable(categoryKey), Optional.ofNullable(q)).stream()
+                .map(EntitiesController::toDto)
+                .toList();
     }
 
     @PostMapping
     @PreAuthorize("hasAuthority('entity_builder:schema:write')")
     public EntityDtos.EntityDto create(@Valid @RequestBody EntityDtos.CreateEntityRequest req) {
         UUID tenantId = SecurityUtil.principal().getTenantId();
-        EntityDefinition e = schemaService.createEntity(tenantId, req.getName(), req.getSlug(), req.getDescription(), req.getStatus());
+        EntityDefinition e = schemaService.createEntity(
+                tenantId, req.getName(), req.getSlug(), req.getDescription(), req.getStatus(), req.getCategoryKey());
+        return toDto(e);
+    }
+
+    @GetMapping("/by-slug/{slug}")
+    @PreAuthorize("hasAuthority('entity_builder:schema:read')")
+    public EntityDtos.EntityDto getBySlug(@PathVariable String slug) {
+        UUID tenantId = SecurityUtil.principal().getTenantId();
+        EntityDefinition e = schemaService.getEntityBySlug(tenantId, slug);
         return toDto(e);
     }
 
@@ -54,7 +68,11 @@ public class EntitiesController {
                 Optional.ofNullable(req.getName()),
                 Optional.ofNullable(req.getSlug()),
                 Optional.ofNullable(req.getDescription()),
-                Optional.ofNullable(req.getStatus())
+                Optional.ofNullable(req.getStatus()),
+                Boolean.TRUE.equals(req.getClearDefaultDisplayField()),
+                Optional.ofNullable(req.getDefaultDisplayFieldSlug()),
+                Boolean.TRUE.equals(req.getClearCategoryKey()),
+                Optional.ofNullable(req.getCategoryKey())
         );
         return toDto(e);
     }
@@ -74,7 +92,9 @@ public class EntitiesController {
                 e.getSlug(),
                 e.getDescription(),
                 e.getBaseEntityId(),
+                e.getDefaultDisplayFieldSlug(),
                 e.getStatus(),
+                e.getCategoryKey(),
                 e.getCreatedAt(),
                 e.getUpdatedAt()
         );

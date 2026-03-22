@@ -34,6 +34,15 @@ public class EntityField {
     @Column(columnDefinition = "jsonb")
     private String config;
 
+    @Column(name = "sort_order", nullable = false)
+    private int sortOrder = 0;
+
+    @Column(name = "label_override", length = 255)
+    private String labelOverride;
+
+    @Column(name = "format_string", length = 500)
+    private String formatString;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -75,6 +84,15 @@ public class EntityField {
 
     public String getConfig() { return config; }
     public void setConfig(String config) { this.config = config; }
+
+    public int getSortOrder() { return sortOrder; }
+    public void setSortOrder(int sortOrder) { this.sortOrder = sortOrder; }
+
+    public String getLabelOverride() { return labelOverride; }
+    public void setLabelOverride(String labelOverride) { this.labelOverride = labelOverride; }
+
+    public String getFormatString() { return formatString; }
+    public void setFormatString(String formatString) { this.formatString = formatString; }
 
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }

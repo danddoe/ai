@@ -14,5 +14,11 @@ public interface EntityDefinitionRepository extends JpaRepository<EntityDefiniti
     boolean existsByTenantIdAndSlug(UUID tenantId, String slug);
 
     List<EntityDefinition> findAllByTenantIdOrderByNameAsc(UUID tenantId);
+
+    List<EntityDefinition> findAllByTenantIdAndCategoryKeyOrderByNameAsc(UUID tenantId, String categoryKey);
+
+    Optional<EntityDefinition> findByTenantEntityExtensionId(UUID tenantEntityExtensionId);
+
+    List<EntityDefinition> findByTenantIdAndBaseEntityIdAndTenantEntityExtensionIdIsNullOrderByNameAsc(UUID tenantId, UUID baseEntityId);
 }
 

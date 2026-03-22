@@ -25,11 +25,22 @@ public class EntityDefinition {
     @Column(length = 500)
     private String description;
 
+    @Column(name = "default_display_field_slug", length = 100)
+    private String defaultDisplayFieldSlug;
+
     @Column(name = "base_entity_id")
     private UUID baseEntityId;
 
+    /** When set, this row is the synthetic entity for a row in {@code tenant_entity_extensions}. */
+    @Column(name = "tenant_entity_extension_id")
+    private UUID tenantEntityExtensionId;
+
     @Column(nullable = false, length = 50)
     private String status = "ACTIVE";
+
+    /** ERP module bucket; vocabulary aligned with IAM portal {@code category_key}. */
+    @Column(name = "category_key", length = 64)
+    private String categoryKey;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -62,11 +73,20 @@ public class EntityDefinition {
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
 
+    public String getDefaultDisplayFieldSlug() { return defaultDisplayFieldSlug; }
+    public void setDefaultDisplayFieldSlug(String defaultDisplayFieldSlug) { this.defaultDisplayFieldSlug = defaultDisplayFieldSlug; }
+
     public UUID getBaseEntityId() { return baseEntityId; }
     public void setBaseEntityId(UUID baseEntityId) { this.baseEntityId = baseEntityId; }
 
+    public UUID getTenantEntityExtensionId() { return tenantEntityExtensionId; }
+    public void setTenantEntityExtensionId(UUID tenantEntityExtensionId) { this.tenantEntityExtensionId = tenantEntityExtensionId; }
+
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+
+    public String getCategoryKey() { return categoryKey; }
+    public void setCategoryKey(String categoryKey) { this.categoryKey = categoryKey; }
 
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }

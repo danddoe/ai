@@ -28,6 +28,10 @@ public class FormLayout {
     @Column(name = "is_default", nullable = false)
     private boolean isDefault = false;
 
+    /** DB-maintained; enforces at most one default per (tenant, entity) on Cockroach. Not written by JPA. */
+    @Column(name = "default_uniqueness_slot", insertable = false, updatable = false)
+    private Long defaultUniquenessSlot;
+
     @Column(nullable = false, length = 50)
     private String status = "ACTIVE";
 
@@ -66,6 +70,8 @@ public class FormLayout {
 
     public boolean isDefault() { return isDefault; }
     public void setDefault(boolean aDefault) { isDefault = aDefault; }
+
+    public Long getDefaultUniquenessSlot() { return defaultUniquenessSlot; }
 
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }

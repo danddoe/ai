@@ -1,10 +1,15 @@
 package com.erp.entitybuilder.service;
 
-import com.erp.entitybuilder.domain.EntityDefinition;
+import com.erp.entitybuilder.domain.EntityField;
 import com.erp.entitybuilder.domain.FormLayout;
 import com.erp.entitybuilder.repository.EntityDefinitionRepository;
+import com.erp.entitybuilder.repository.EntityFieldRepository;
 import com.erp.entitybuilder.repository.FormLayoutRepository;
 import com.erp.entitybuilder.web.ApiException;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,16 +18,32 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 public class FormLayoutService {
 
     private final EntityDefinitionRepository entityRepository;
+    private final EntityFieldRepository fieldRepository;
     private final FormLayoutRepository formLayoutRepository;
+    private final FormLayoutTemplateLibrary templateLibrary;
+    private final FormLayoutJsonValidator layoutJsonValidator;
+    private final ObjectMapper objectMapper;
 
-    public FormLayoutService(EntityDefinitionRepository entityRepository, FormLayoutRepository formLayoutRepository) {
+    public FormLayoutService(
+            EntityDefinitionRepository entityRepository,
+            EntityFieldRepository fieldRepository,
+            FormLayoutRepository formLayoutRepository,
+            FormLayoutTemplateLibrary templateLibrary,
+            FormLayoutJsonValidator layoutJsonValidator,
+            ObjectMapper objectMapper
+    ) {
         this.entityRepository = entityRepository;
+        this.fieldRepository = fieldRepository;
         this.formLayoutRepository = formLayoutRepository;
+        this.templateLibrary = templateLibrary;
+        this.layoutJsonValidator = layoutJsonValidator;
+        this.objectMapper = objectMapper;
     }
 
     @Transactional(readOnly = true)
@@ -43,6 +64,8 @@ public class FormLayoutService {
         if (formLayoutRepository.findByTenantIdAndEntityIdAndName(tenantId, entityId, name).isPresent()) {
             throw new ApiException(HttpStatus.CONFLICT, "conflict", "Form layout name already exists", Map.of("name", name));
         }
+
+        layoutJsonValidator.validateOrThrow(layoutJson);
 
         FormLayout l = new FormLayout();
         l.setTenantId(tenantId);
@@ -65,6 +88,20 @@ public class FormLayoutService {
         return formLayoutRepository.save(l);
     }
 
+    @Transactional
+    public FormLayout createFromTemplate(UUID tenantId, UUID entityId, String templateKey, String name, boolean isDefault) {
+        String templateJson = templateLibrary.requireLayoutJson(templateKey);
+        Map<String, UUID> slugToId = fieldRepository.findByEntityId(entityId).stream()
+                .collect(Collectors.toMap(EntityField::getSlug, EntityField::getId, (a, b) -> a));
+        String mapped;
+        try {
+            mapped = applyFieldSlugMapping(templateJson, slugToId);
+        } catch (JsonProcessingException e) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "bad_request", "Could not process template layout");
+        }
+        return create(tenantId, entityId, name, mapped, isDefault);
+    }
+
     @Transactional(readOnly = true)
     public FormLayout get(UUID tenantId, UUID layoutId) {
         return formLayoutRepository.findById(layoutId)
@@ -77,7 +114,10 @@ public class FormLayoutService {
         FormLayout l = get(tenantId, layoutId);
 
         name.filter(v -> v != null && !v.isBlank()).ifPresent(l::setName);
-        layoutJson.ifPresent(l::setLayout);
+        layoutJson.ifPresent(json -> {
+            layoutJsonValidator.validateOrThrow(json);
+            l.setLayout(json);
+        });
         status.filter(v -> v != null && !v.isBlank()).ifPresent(l::setStatus);
 
         if (isDefault.isPresent()) {
@@ -100,6 +140,62 @@ public class FormLayoutService {
     public void delete(UUID tenantId, UUID layoutId) {
         FormLayout l = get(tenantId, layoutId);
         formLayoutRepository.delete(l);
+    }
+
+    private String applyFieldSlugMapping(String templateJson, Map<String, UUID> slugToId) throws JsonProcessingException {
+        JsonNode root = objectMapper.readTree(templateJson);
+        if (!root.isObject()) {
+            return templateJson;
+        }
+        JsonNode versionNode = root.get("version");
+        if (versionNode == null || !versionNode.isNumber() || versionNode.intValue() != 2) {
+            return templateJson;
+        }
+        ObjectNode objectNode = (ObjectNode) root;
+        JsonNode regions = objectNode.get("regions");
+        if (regions != null && regions.isArray()) {
+            for (JsonNode region : regions) {
+                walkRows(region.get("rows"), slugToId);
+            }
+        }
+        return objectMapper.writeValueAsString(objectNode);
+    }
+
+    private static void walkRows(JsonNode rows, Map<String, UUID> slugToId) {
+        if (rows == null || !rows.isArray()) {
+            return;
+        }
+        for (JsonNode row : rows) {
+            JsonNode columns = row.get("columns");
+            if (columns == null || !columns.isArray()) {
+                continue;
+            }
+            for (JsonNode col : columns) {
+                JsonNode items = col.get("items");
+                if (items == null || !items.isArray()) {
+                    continue;
+                }
+                for (JsonNode item : items) {
+                    if (!item.isObject()) {
+                        continue;
+                    }
+                    ObjectNode io = (ObjectNode) item;
+                    JsonNode kindNode = io.get("kind");
+                    if (kindNode != null && kindNode.isTextual() && "action".equals(kindNode.asText())) {
+                        continue;
+                    }
+                    JsonNode slugNode = io.get("fieldSlug");
+                    if (slugNode != null && slugNode.isTextual()) {
+                        UUID fid = slugToId.get(slugNode.asText());
+                        if (fid != null) {
+                            io.put("fieldId", fid.toString());
+                        } else {
+                            io.putNull("fieldId");
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

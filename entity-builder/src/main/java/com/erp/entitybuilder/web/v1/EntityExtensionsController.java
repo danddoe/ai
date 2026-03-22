@@ -53,7 +53,9 @@ public class EntityExtensionsController {
                 e.getSlug(),
                 e.getDescription(),
                 e.getBaseEntityId(),
+                e.getDefaultDisplayFieldSlug(),
                 e.getStatus(),
+                e.getCategoryKey(),
                 e.getCreatedAt(),
                 e.getUpdatedAt()
         );

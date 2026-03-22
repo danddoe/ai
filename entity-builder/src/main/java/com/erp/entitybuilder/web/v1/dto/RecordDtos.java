@@ -16,6 +16,7 @@ public class RecordDtos {
             UUID tenantId,
             UUID entityId,
             String externalId,
+            String businessDocumentNumber,
             UUID createdBy,
             String status,
             Map<String, Object> values,
@@ -24,11 +25,16 @@ public class RecordDtos {
             Instant updatedAt
     ) {}
 
+    public record RecordLookupItemDto(UUID recordId, String displayLabel, Map<String, Object> values) {}
+
+    public record RecordLookupResponse(List<RecordLookupItemDto> items) {}
+
     public static class CreateRecordRequest {
         @NotNull
         private Map<String, Object> values;
         private List<LinkInput> links;
         private String externalId;
+        private String businessDocumentNumber;
 
         public Map<String, Object> getValues() { return values; }
         public void setValues(Map<String, Object> values) { this.values = values; }
@@ -36,6 +42,8 @@ public class RecordDtos {
         public void setLinks(List<LinkInput> links) { this.links = links; }
         public String getExternalId() { return externalId; }
         public void setExternalId(String externalId) { this.externalId = externalId; }
+        public String getBusinessDocumentNumber() { return businessDocumentNumber; }
+        public void setBusinessDocumentNumber(String businessDocumentNumber) { this.businessDocumentNumber = businessDocumentNumber; }
     }
 
     public static class UpdateRecordRequest {

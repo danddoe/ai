@@ -10,6 +10,8 @@ import java.util.UUID;
 public interface EntityFieldRepository extends JpaRepository<EntityField, UUID> {
     Optional<EntityField> findByEntityIdAndSlug(UUID entityId, String slug);
     List<EntityField> findByEntityId(UUID entityId);
+
+    List<EntityField> findByEntityIdOrderBySortOrderAscNameAsc(UUID entityId);
     boolean existsByEntityIdAndSlug(UUID entityId, String slug);
 }
 

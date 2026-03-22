@@ -52,6 +52,23 @@ public class FormLayoutsController {
         return toDto(l);
     }
 
+    @PostMapping("/from-template")
+    @PreAuthorize("hasAuthority('entity_builder:schema:write')")
+    public FormLayoutDtos.FormLayoutDto createFromTemplate(
+            @PathVariable UUID entityId,
+            @Valid @RequestBody FormLayoutDtos.CreateFromTemplateRequest req
+    ) {
+        UUID tenantId = SecurityUtil.principal().getTenantId();
+        FormLayout l = formLayoutService.createFromTemplate(
+                tenantId,
+                entityId,
+                req.getTemplateKey(),
+                req.getName(),
+                req.isDefault()
+        );
+        return toDto(l);
+    }
+
     @GetMapping("/{layoutId}")
     @PreAuthorize("hasAuthority('entity_builder:schema:read')")
     public FormLayoutDtos.FormLayoutDto get(@PathVariable UUID entityId, @PathVariable UUID layoutId) {
