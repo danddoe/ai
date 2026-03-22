@@ -9,38 +9,45 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
-import java.util.UUID;
 
 /**
- * Creates a default tenant and admin user when the database is empty (e.g. for local dev).
- * Enable with profile: default-bootstrap
+ * Seeds a tenant + superadmin user when the database has no tenants (local / first boot).
+ * <p>
+ * Activate: {@code --spring.profiles.active=default-bootstrap}
+ * <p>
+ * Login (defaults): tenant slug {@code ai}, email {@code superadmin@ai.com}, password from
+ * {@code app.bootstrap.admin-password} / env {@code SEED_SUPERADMIN_PASSWORD}.
  */
 @Component
 @Profile("default-bootstrap")
 public class BootstrapData {
 
     @Bean
-    CommandLineRunner bootstrap(TenantRepository tenantRepository,
-                               UserRepository userRepository,
-                               TenantUserRepository tenantUserRepository,
-                               RoleRepository roleRepository,
-                               UserRoleRepository userRoleRepository,
-                               RolePermissionRepository rolePermissionRepository,
-                               PermissionRepository permissionRepository,
-                               PasswordEncoder passwordEncoder) {
+    CommandLineRunner bootstrap(
+            BootstrapSeedProperties seed,
+            TenantRepository tenantRepository,
+            UserRepository userRepository,
+            TenantUserRepository tenantUserRepository,
+            RoleRepository roleRepository,
+            UserRoleRepository userRoleRepository,
+            RolePermissionRepository rolePermissionRepository,
+            PermissionRepository permissionRepository,
+            PasswordEncoder passwordEncoder) {
         return args -> {
-            if (tenantRepository.count() > 0) return;
+            if (tenantRepository.count() > 0) {
+                return;
+            }
 
             Tenant tenant = new Tenant();
-            tenant.setName("Default Tenant");
-            tenant.setSlug("default");
+            tenant.setName(seed.getTenantName());
+            tenant.setSlug(seed.getTenantSlug());
             tenant.setStatus("ACTIVE");
             tenant = tenantRepository.save(tenant);
 
             User user = new User();
-            user.setEmail("admin@example.com");
-            user.setPasswordHash(passwordEncoder.encode("admin123"));
-            user.setDisplayName("Admin");
+            user.setEmail(seed.getAdminEmail());
+            user.setPasswordHash(passwordEncoder.encode(seed.getAdminPassword()));
+            user.setDisplayName(seed.getAdminDisplayName());
             user.setStatus("ACTIVE");
             user = userRepository.save(user);
 
@@ -53,8 +60,8 @@ public class BootstrapData {
 
             Role role = new Role();
             role.setTenantId(tenant.getId());
-            role.setName("ADMIN");
-            role.setDescription("Administrator");
+            role.setName(seed.getAdminRoleName());
+            role.setDescription("Seeded superadmin (all permissions)");
             role.setSystem(true);
             role = roleRepository.save(role);
 

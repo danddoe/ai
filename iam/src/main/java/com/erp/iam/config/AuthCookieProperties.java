@@ -10,8 +10,9 @@ public class AuthCookieProperties {
     /**
      * When true: login/refresh set an httpOnly cookie with the refresh token and omit refreshToken from JSON.
      * Refresh and logout accept the token from that cookie if the body omits refreshToken.
+     * Default true (see {@code application.yml}); IAM E2E disables via CLI.
      */
-    private boolean refreshTokenInCookie = false;
+    private boolean refreshTokenInCookie = true;
 
     private String refreshCookieName = "erp_refresh";
 

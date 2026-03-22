@@ -27,9 +27,16 @@ server:
   port: ${SERVER_PORT:8080}
 
 app:
+  bootstrap:
+    tenant-name: AI
+    tenant-slug: ai
+    admin-email: superadmin@ai.com
+    admin-password: ${SEED_SUPERADMIN_PASSWORD:SuperAdminDev123!}
+    admin-display-name: Super Admin
+    admin-role-name: SUPERADMIN
   auth:
-    # Set true for browser SPAs (refresh token in httpOnly cookie; JSON omits refreshToken). E2E tests force false.
-    refresh-token-in-cookie: ${AUTH_REFRESH_TOKEN_IN_COOKIE:false}
+    # Browser SPAs: refresh JWT in httpOnly cookie; JSON omits refreshToken. IAM E2E passes --app.auth.refresh-token-in-cookie=false.
+    refresh-token-in-cookie: ${AUTH_REFRESH_TOKEN_IN_COOKIE:true}
     refresh-cookie-name: erp_refresh
     refresh-cookie-secure: ${AUTH_REFRESH_COOKIE_SECURE:false}
   flyway:

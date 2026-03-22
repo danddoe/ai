@@ -11,5 +11,7 @@ public interface TenantRepository extends JpaRepository<Tenant, UUID>, JpaSpecif
 
     Optional<Tenant> findBySlug(String slug);
 
+    Optional<Tenant> findBySlugIgnoreCase(String slug);
+
     boolean existsBySlug(String slug);
 }

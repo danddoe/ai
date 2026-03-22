@@ -63,7 +63,9 @@ public abstract class AbstractIamE2ETest {
                         "--spring.datasource.password=",
                         "--spring.flyway.enabled=true",
                         // deterministic JWT for tests
-                        "--JWT_SECRET=iam-e2e-hs256-secret-key-should-be-32-bytes-minimum-1234"
+                        "--JWT_SECRET=iam-e2e-hs256-secret-key-should-be-32-bytes-minimum-1234",
+                        // RestTemplate tests use JSON refreshToken, not cookie jar
+                        "--app.auth.refresh-token-in-cookie=false"
                 );
 
         int httpPort = ((WebServerApplicationContext) appContext).getWebServer().getPort();

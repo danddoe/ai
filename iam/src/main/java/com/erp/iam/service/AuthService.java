@@ -140,11 +140,19 @@ public class AuthService {
     }
 
     private Tenant resolveTenant(String tenantSlugOrId) {
+        if (tenantSlugOrId == null || tenantSlugOrId.isBlank()) {
+            throw new AuthException("Tenant slug or ID is required");
+        }
+        String raw = tenantSlugOrId.trim();
         try {
-            UUID id = UUID.fromString(tenantSlugOrId);
-            return tenantRepository.findById(id).orElseThrow(() -> new AuthException("Tenant not found"));
+            UUID id = UUID.fromString(raw);
+            return tenantRepository.findById(id)
+                    .orElseThrow(() -> new AuthException(
+                            "Tenant not found for this UUID. Create the tenant or use its slug."));
         } catch (IllegalArgumentException e) {
-            return tenantRepository.findBySlug(tenantSlugOrId).orElseThrow(() -> new AuthException("Tenant not found"));
+            return tenantRepository.findBySlugIgnoreCase(raw)
+                    .orElseThrow(() -> new AuthException(
+                            "Tenant not found. Check the slug (bootstrap default is \"ai\") or use the tenant UUID."));
         }
     }
 
