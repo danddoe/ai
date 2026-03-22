@@ -5,7 +5,7 @@
     "name": "Location",
     "slug": "location",
     "categoryKey": "master_data",
-    "description": "Physical address; core-org API; external_id = location_id.",
+    "description": "Physical address; core-service API; external_id = location_id.",
     "defaultDisplayFieldSlug": "location_name"
   },
   "fields": [
@@ -18,7 +18,7 @@
       "pii": false,
       "config": {
         "storage": "CORE_DOMAIN",
-        "coreBinding": { "service": "core-org", "column": "location_name" }
+        "coreBinding": { "service": "core-service", "column": "location_name" }
       }
     },
     {
@@ -30,7 +30,7 @@
       "pii": false,
       "config": {
         "storage": "CORE_DOMAIN",
-        "coreBinding": { "service": "core-org", "column": "address_line_1" }
+        "coreBinding": { "service": "core-service", "column": "address_line_1" }
       }
     },
     {
@@ -42,7 +42,7 @@
       "pii": false,
       "config": {
         "storage": "CORE_DOMAIN",
-        "coreBinding": { "service": "core-org", "column": "city" }
+        "coreBinding": { "service": "core-service", "column": "city" }
       }
     },
     {
@@ -54,7 +54,7 @@
       "pii": false,
       "config": {
         "storage": "CORE_DOMAIN",
-        "coreBinding": { "service": "core-org", "column": "state_province" }
+        "coreBinding": { "service": "core-service", "column": "state_province" }
       }
     },
     {
@@ -66,7 +66,7 @@
       "pii": false,
       "config": {
         "storage": "CORE_DOMAIN",
-        "coreBinding": { "service": "core-org", "column": "postal_code" }
+        "coreBinding": { "service": "core-service", "column": "postal_code" }
       }
     },
     {
@@ -78,7 +78,7 @@
       "pii": false,
       "config": {
         "storage": "CORE_DOMAIN",
-        "coreBinding": { "service": "core-org", "column": "country_code" }
+        "coreBinding": { "service": "core-service", "column": "country_code" }
       }
     },
     {
@@ -90,7 +90,7 @@
       "pii": false,
       "config": {
         "storage": "CORE_DOMAIN",
-        "coreBinding": { "service": "core-org", "column": "region_id" }
+        "coreBinding": { "service": "core-service", "column": "region_id" }
       }
     }
   ]

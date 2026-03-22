@@ -1,4 +1,4 @@
-﻿# Gradle
+# Gradle
 .gradle/
 build/
 **/build/
@@ -6,10 +6,14 @@ data/
 
 # IntelliJ / IDEA
 .idea/
+*.pid
 
 # CockroachDB local data
 cockroachdb/data/
 cockroach-data/
+
+# Optional Windows binary (see bin/README.md)
+bin/cockroach.exe
 
 # Logs
 *.log

@@ -17,7 +17,7 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
-    table: flyway_core_service_schema_history
+    table: flyway_core_org_schema_history
     baseline-on-migrate: true
     baseline-version: 0
 

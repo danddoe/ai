@@ -1,21 +1,7 @@
 ---
 name: Dynamic Entity Builder Backend
 overview: "Implement the dynamic entity builder backend API described in [design/Dynamic_entity_builder.md](design/Dynamic_entity_builder.md): a new multi-tenant Spring Boot module for entity definitions, relationships, tenant extensions, record storage, PII vault, and form layout metadata—integrated with existing IAM and documented for AI consumption."
-todos:
-  - id: portal-entity-crud
-    content: "erp-portal — create/edit/delete entity UI + POST/PATCH/DELETE /v1/entities client"
-  - id: portal-records-ui
-    content: "erp-portal — browse/filter records and dynamic record editor (optional v2)"
-  - id: records-query
-    content: "Records API — filter/sort list by field values; document pagination contract in OpenAPI"
-  - id: extensions-align
-    content: "Either wire tenant_entity_extensions tables in JPA/services or drop/deprecate in favor of entities.base_entity_id"
-  - id: relationship-slug-db
-    content: "entity_relationships — DB-level UNIQUE(tenant_id, slug) when Cockroach migration path is clear"
-  - id: cardinality-enforcement
-    content: "Enforce relationship cardinality on record_links create (plan + tests)"
-  - id: reporting-phase2
-    content: "Reporting — CDC/events or batch export toward ClickHouse (separate design)"
+todos: []
 isProject: false
 ---
 
@@ -35,8 +21,8 @@ isProject: false
 
 **Out of scope (per spec):**
 
-- UI **in the entity-builder module** (API-only service). A separate **erp-portal** SPA now provides login, entity list, and a **form layout builder** against the API gateway; it does not yet cover entity creation or full record CRUD UI.
-- Reporting / ClickHouse (Phase 2: events or batch sync; see [Phase 2 — continued delivery](#phase-2--continued-delivery))
+- UI (any frontend or form builder UI)
+- Reporting / ClickHouse (propose as Phase 2: events or batch sync to ClickHouse; not in this plan)
 
 **Proposed answers to spec questions:**
 
@@ -48,13 +34,13 @@ isProject: false
 
 ## Tech stack (align with IAM)
 
-- **Language:** Java 17
-- **Framework:** Spring Boot 3.4.4
-- **Database:** CockroachDB (PostgreSQL-compatible); same as IAM
-- **Build:** Gradle; new subproject under root
-- **Auth:** JWT from IAM (shared secret/issuer/audience); validate in this service
-- **API docs:** Springdoc OpenAPI 2.8.x + `/v1/ai/guide` JSON
-- **Migrations:** Flyway
+- **Language:** Java 17  
+- **Framework:** Spring Boot 3.4.4  
+- **Database:** CockroachDB (PostgreSQL-compatible); same as IAM  
+- **Build:** Gradle; new subproject under root  
+- **Auth:** JWT from IAM (shared secret/issuer/audience); validate in this service  
+- **API docs:** Springdoc OpenAPI 2.8.x + `/v1/ai/guide` JSON  
+- **Migrations:** Flyway  
 - **Layers:** Controller → Service → Repository; DTOs for API, domain entities for persistence
 
 ---
@@ -143,21 +129,21 @@ This section defines how the backend accepts and persists record data sent by a 
 **Create record** – `POST /v1/tenants/{tenantId}/entities/{entityId}/records`
 
 - **Request body:**
-    - `values` (object, required): map of field slug to value. Example: `{ "values": { "name": "Acme", "status": "active", "amount": 100.50, "dueDate": "2025-12-31", "isActive": true, "ownerId": "uuid-of-record" } }`. Types must align with entity field types (string, number, date, boolean, reference).
-    - `links` (array, optional): relationship instances to create for this record. Example: `{ "links": [ { "relationshipSlug": "order-to-customer", "toRecordId": "uuid" } ] }`.
-    - `externalId` (string, optional): client-supplied id for idempotency or sync.
+  - `values` (object, required): map of field slug to value. Example: `{ "values": { "name": "Acme", "status": "active", "amount": 100.50, "dueDate": "2025-12-31", "isActive": true, "ownerId": "uuid-of-record" } }`. Types must align with entity field types (string, number, date, boolean, reference).
+  - `links` (array, optional): relationship instances to create for this record. Example: `{ "links": [ { "relationshipSlug": "order-to-customer", "toRecordId": "uuid" } ] }`.
+  - `externalId` (string, optional): client-supplied id for idempotency or sync.
 - **Idempotency:** Support optional header `Idempotency-Key: <key>`.
-    - Backend stores an idempotency entry scoped by `tenant_id + user_id + method + route(path template) + idempotency_key`.
-    - Backend computes a `request_hash` from a canonicalized JSON request body:
-        - object keys are canonicalized deterministically
-        - array order is preserved; for v1, order-sensitivity applies to the `links` array (no re-sorting)
-    - Retain idempotency entries for **24 hours**.
-    - On retry with the same `Idempotency-Key`:
-        - if the stored `request_hash` matches, return the previously stored response (201 for create)
-        - if the `request_hash` differs, return **HTTP 409 Conflict**
+  - Backend stores an idempotency entry scoped by `tenant_id + user_id + method + route(path template) + idempotency_key`.
+  - Backend computes a `request_hash` from a canonicalized JSON request body:
+    - object keys are canonicalized deterministically
+    - array order is preserved; for v1, order-sensitivity applies to the `links` array (no re-sorting)
+  - Retain idempotency entries for **24 hours**.
+  - On retry with the same `Idempotency-Key`:
+    - if the stored `request_hash` matches, return the previously stored response (201 for create)
+    - if the `request_hash` differs, return **HTTP 409 Conflict**
 - `externalId`: optional client-supplied id for deduplication/synchronization.
-    - Enforce uniqueness with `(tenant_id, entity_id, externalId)` in `entity_records`.
-    - If `Idempotency-Key` is not used and a record already exists for the same `(tenantId, entityId, externalId)`, return the existing record (idempotent create semantics).
+  - Enforce uniqueness with `(tenant_id, entity_id, externalId)` in `entity_records`.
+  - If `Idempotency-Key` is not used and a record already exists for the same `(tenantId, entityId, externalId)`, return the existing record (idempotent create semantics).
 - **Response:** 201 with full record representation (id, entityId, tenantId, values, links, created_at, updated_at, created_by). PII fields may be masked in response (e.g. config-driven: last 4 chars, or placeholder).
 
 **Update record** – `PATCH /v1/tenants/{tenantId}/entities/{entityId}/records/{recordId}`
@@ -179,15 +165,15 @@ This section defines how the backend accepts and persists record data sent by a 
 
 1. Parse request body into `values` and optional `links`, and read `externalId`.
 2. Compute a canonical `request_hash` from the request JSON body:
-- canonicalize object key ordering deterministically
-- preserve array ordering; include the order-sensitive `links` array as-is
+  - canonicalize object key ordering deterministically
+  - preserve array ordering; include the order-sensitive `links` array as-is
 3. Idempotency decision:
-- If `Idempotency-Key` header is present:
+  - If `Idempotency-Key` header is present:
     - look up idempotency entry by `tenant_id + user_id + method + route_template + idempotency_key`
     - if found:
-        - if stored `request_hash` matches, return the stored response (201)
-        - if stored `request_hash` differs, return **409 Conflict**
-- Else if `externalId` is present:
+      - if stored `request_hash` matches, return the stored response (201)
+      - if stored `request_hash` differs, return **409 Conflict**
+  - Else if `externalId` is present:
     - look up existing record by `(tenant_id, entity_id, externalId)`
     - if found, return the existing record (idempotent create)
 4. Load entity and its fields (including tenant extension fields if any) for `entityId` and `tenantId`. If entity not found or not accessible, return 404.
@@ -219,10 +205,10 @@ This section defines how the backend accepts and persists record data sent by a 
 
 - **Root:** Add subproject `entity-builder` in [settings.gradle](settings.gradle).
 - **entity-builder/** (new module):
-    - `build.gradle` (same as IAM: Boot, Web, Security, JPA, Validation, Flyway, springdoc, PostgreSQL driver; no JWT impl dependency if validating with shared library or REST – or use same jjwt if this service validates JWT itself).
-    - `src/main/java/com/erp/entitybuilder/`: `EntityBuilderApplication`, `config/`, `domain/`, `repository/`, `service/`, `web/v1/` (controllers), `web/v1/dto/`, `web/ErrorHandlingAdvice`, `security/` (JWT filter, principal).
-    - `src/main/resources/application.yml`, `db/migration/V1__...` through Vn for schema.
-    - `src/test/` – unit and e2e tests (e.g. Testcontainers or shared Cockroach for e2e).
+  - `build.gradle` (same as IAM: Boot, Web, Security, JPA, Validation, Flyway, springdoc, PostgreSQL driver; no JWT impl dependency if validating with shared library or REST – or use same jjwt if this service validates JWT itself).
+  - `src/main/java/com/erp/entitybuilder/`: `EntityBuilderApplication`, `config/`, `domain/`, `repository/`, `service/`, `web/v1/` (controllers), `web/v1/dto/`, `web/ErrorHandlingAdvice`, `security/` (JWT filter, principal).
+  - `src/main/resources/application.yml`, `db/migration/V1__...` through Vn for schema.
+  - `src/test/` – unit and e2e tests (e.g. Testcontainers or shared Cockroach for e2e).
 
 ---
 
@@ -255,101 +241,5 @@ This section defines how the backend accepts and persists record data sent by a 
 - Database schema (Flyway) for entities, fields, relationships, extensions, records, record_values, record_links, pii_vault, form_layouts.
 - OpenAPI at `/v3/api-docs`, Swagger UI, and `GET /v1/ai/guide` with stable schemas and workflows.
 - README and (if needed) IAM permission seeds or doc for `entity_builder:`* permissions.
-- No UI in-module; reporting/ClickHouse left for a later phase.
-
----
-
-## Implementation status (backend v1)
-
-The ordered steps above are **largely complete** in the `entity-builder` Gradle module. Use this as a living checklist; drift should be corrected here when behavior changes.
-
-| Step | Status | Notes |
-|------|--------|--------|
-| 1 Module and config | **Done** | `entity-builder` in root build; Boot 3.4.x, Cockroach dialect, Flyway `flyway_entity_builder_schema_history`, JWT props aligned with IAM. |
-| 2 Security wiring | **Done** | `JwtAuthenticationFilter`, `SecurityConfig`, `@PreAuthorize`, `EntityBuilderSecurity` (tenant match + cross-tenant admin escape hatch). |
-| 3 Schema: entities and fields | **Done** | `EntitiesController`, `EntityFieldsController`, DTOs, services, pagination where applicable for lists. |
-| 4 Schema: relationships and extensions | **Partial** | Relationships: CRUD + **slug** column (V2); uniqueness enforced in app for slug per tenant. Extensions: **implemented as tenant `entities` rows with `base_entity_id`**, not the separate `tenant_entity_extensions` / `tenant_entity_extension_fields` tables (those exist in V1 SQL but have **no JPA mapping** yet—see [Gaps](#gaps-and-spec-deltas)). |
-| 5 Records and values | **Done** | Create/get/list/patch/delete; `Idempotency-Key` + `externalId` semantics; list uses `page` / `pageSize` and `PageResponse`. |
-| 6 PII vault | **Done** | `pii_vault` + `PiiCrypto`; field-level flag is **`entity_fields.pii`** (boolean), not only `config.pii`. |
-| 7 Form layouts | **Done** | CRUD + `status`; **one default per entity** (V3/V4 migrations). **Classpath template library** + `GET /v1/form-layout-templates` + `POST .../form-layouts/from-template`. Layout JSON validation (`FormLayoutJsonValidator`). |
-| 8 OpenAPI and AI guide | **Done** | Springdoc + `AiGuideController` workflows. |
-| 9 Tests | **Done** | E2E suite under `entity-builder` (requires Cockroach per README). |
-| 10 Documentation | **Done** | `entity-builder/README.md`, root + api-gateway routing docs. |
-
-**Integration (outside the module):**
-
-- **api-gateway** (and optional Kong) route `/v1/entities`, `/v1/entity-relationships`, `/v1/tenants/.../records`, etc. to entity-builder.
-- **IAM** seeds `entity_builder:*` permissions (see IAM README / bootstrap).
-- **erp-portal** — form builder and navigation; **does not** call `POST /v1/entities` today (entities are created via API/Swagger/automation).
-
----
-
-## Gaps and spec deltas
-
-These are intentional or pending reconciliations between this plan, [Dynamic_entity_builder.md](Dynamic_entity_builder.md), and the running code.
-
-1. **Tenant extensions — two representations**  
-   - **Implemented:** `POST /v1/entities/{baseEntityId}/extensions` creates a **new `entities` row** with `base_entity_id` pointing at the base entity; fields hang off that entity like any other.  
-   - **Present in SQL only:** `tenant_entity_extensions` and `tenant_entity_extension_fields` (V1). Either adopt them in the domain model and APIs or document deprecation and remove in a later migration.
-
-2. **PII flag**  
-   - Plan text mentioned `config.pii`; **code uses** column **`pii`** on `entity_fields` (and the same pattern for extension field table if wired later).
-
-3. **Relationship slug**  
-   - Added in **V2**; stable API identifier alongside UUID. DB unique constraint deferred (comment in migration); app enforces conflicts.
-
-4. **Record `links` on PATCH**  
-   - **Implemented as replace:** if `links` is present, existing outbound `record_links` for that record are deleted and the array is re-applied (`RecordsService.updateRecord`). Ensure OpenAPI/Swagger descriptions state this explicitly.
-
-5. **Record list filters**  
-   - Plan mentioned optional filter by field values; **current list** is paginated without query filters.
-
-6. **Cardinality**  
-   - `entity_relationships.cardinality` stored; enforcement on `record_links` may be partial—confirm in `RecordsService` and tighten if needed.
-
----
-
-## Phase 2 — continued delivery
-
-Ordered backlog to extend the platform without rewriting v1 contracts unless versioned.
-
-### A. Product / portal
-
-- **Entity lifecycle in UI:** create, edit, archive/delete entity from erp-portal; wire `createEntity` / `updateEntity` / `delete` in `erp-portal/src/api/schemas.ts` and new pages or modals.
-- **Record UI:** tenant-scoped list with column selection from schema; create/edit record forms driven by default **form layout** or a simple key-value editor for v1.
-- **Deep links:** preserve router patterns in [erp-portal/README.md](../erp-portal/README.md).
-
-### B. Records API richness
-
-- **Filtering and sorting:** query params (e.g. by slug equality, date range) with index-friendly patterns; cap `pageSize`; document limits.
-- **Bulk operations (optional):** batch create or patch behind feature flag.
-
-### C. Schema hardening
-
-- **Finalize extension model:** single source of truth (`base_entity_id` only vs `tenant_entity_extensions` tables); migrations + JPA + docs in one release.
-- **Relationship slug:** `UNIQUE (tenant_id, slug)` in DB when operational constraints allow.
-- **Cardinality and link invariants:** enforce at write time; return `409` or `400` with stable `error.code`.
-
-### D. PII and operations
-
-- **Key rotation:** `pii_vault.key_id` already present; define rotation job and re-encrypt strategy.
-- **Audit:** optional append-only audit log for schema changes and PII read access (who/when).
-
-### E. Reporting and analytics
-
-- **Event stream:** emit domain events (record created/updated, schema changed) to a bus or outbox table.
-- **ClickHouse (or warehouse):** batch or streaming sync; dimensional model TBD; keep entity-builder OLTP-focused.
-
-### F. AI / developer experience
-
-- Expand **`/v1/ai/guide`** with pagination examples, extension model explanation, and portal deep links.
-- Contract tests: OpenAPI snapshot or Pact-style checks between gateway and services.
-
----
-
-## Revision history (plan document)
-
-| Date | Change |
-|------|--------|
-| 2026-03-20 | Added implementation status, gaps, Phase 2 backlog, frontmatter todos; clarified UI scope (erp-portal vs module). |
+- No UI; reporting/ClickHouse left for a later phase.
 

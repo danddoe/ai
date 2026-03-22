@@ -5,7 +5,7 @@
     "name": "Company",
     "slug": "company",
     "categoryKey": "master_data",
-    "description": "Legal entity; core columns in core-org; tenant extensions in entity_record_values (external_id = company_id).",
+    "description": "Legal entity; core columns in core-service; tenant extensions in entity_record_values (external_id = company_id).",
     "defaultDisplayFieldSlug": "company_name"
   },
   "fields": [
@@ -18,7 +18,7 @@
       "pii": false,
       "config": {
         "storage": "CORE_DOMAIN",
-        "coreBinding": { "service": "core-org", "column": "parent_company_id" },
+        "coreBinding": { "service": "core-service", "column": "parent_company_id" },
         "readOnly": false
       }
     },
@@ -31,7 +31,7 @@
       "pii": false,
       "config": {
         "storage": "CORE_DOMAIN",
-        "coreBinding": { "service": "core-org", "column": "company_name" }
+        "coreBinding": { "service": "core-service", "column": "company_name" }
       }
     },
     {
@@ -43,7 +43,7 @@
       "pii": false,
       "config": {
         "storage": "CORE_DOMAIN",
-        "coreBinding": { "service": "core-org", "column": "ownership_pct" }
+        "coreBinding": { "service": "core-service", "column": "ownership_pct" }
       }
     },
     {
@@ -55,7 +55,7 @@
       "pii": false,
       "config": {
         "storage": "CORE_DOMAIN",
-        "coreBinding": { "service": "core-org", "column": "base_currency" }
+        "coreBinding": { "service": "core-service", "column": "base_currency" }
       }
     },
     {

@@ -1,4 +1,4 @@
-﻿$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Stop'
 
 $pidFile = Join-Path $PSScriptRoot 'cockroach.pid'
 
@@ -7,19 +7,20 @@ if (!(Test-Path $pidFile)) {
   exit 0
 }
 
-$pid = Get-Content $pidFile | Select-Object -First 1
-if (-not $pid) {
+# Do not use $pid — it is a read-only automatic variable (current PowerShell process id).
+$crdbPid = Get-Content $pidFile | Select-Object -First 1
+if (-not $crdbPid) {
   Remove-Item -Force $pidFile -ErrorAction SilentlyContinue
   Write-Host 'PID file was empty.'
   exit 0
 }
 
 try {
-  $p = Get-Process -Id $pid -ErrorAction Stop
-  Write-Host "Stopping CockroachDB PID $pid ..."
-  Stop-Process -Id $pid -Force
+  $null = Get-Process -Id $crdbPid -ErrorAction Stop
+  Write-Host "Stopping CockroachDB PID $crdbPid ..."
+  Stop-Process -Id $crdbPid -Force
 } catch {
-  Write-Host "Process $pid not found. Cleaning up PID file."
+  Write-Host "Process $crdbPid not found. Cleaning up PID file."
 }
 
 Remove-Item -Force $pidFile -ErrorAction SilentlyContinue

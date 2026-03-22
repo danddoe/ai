@@ -5,7 +5,7 @@
     "name": "Property unit",
     "slug": "property_unit",
     "categoryKey": "master_data",
-    "description": "Leasable space within a property; core-org API; external_id = unit_id.",
+    "description": "Leasable space within a property; core-service API; external_id = unit_id.",
     "defaultDisplayFieldSlug": "unit_number"
   },
   "fields": [
@@ -18,7 +18,7 @@
       "pii": false,
       "config": {
         "storage": "CORE_DOMAIN",
-        "coreBinding": { "service": "core-org", "column": "property_id" }
+        "coreBinding": { "service": "core-service", "column": "property_id" }
       }
     },
     {
@@ -30,7 +30,7 @@
       "pii": false,
       "config": {
         "storage": "CORE_DOMAIN",
-        "coreBinding": { "service": "core-org", "column": "unit_number" }
+        "coreBinding": { "service": "core-service", "column": "unit_number" }
       }
     },
     {
@@ -42,7 +42,7 @@
       "pii": false,
       "config": {
         "storage": "CORE_DOMAIN",
-        "coreBinding": { "service": "core-org", "column": "square_footage" }
+        "coreBinding": { "service": "core-service", "column": "square_footage" }
       }
     },
     {
@@ -54,7 +54,7 @@
       "pii": false,
       "config": {
         "storage": "CORE_DOMAIN",
-        "coreBinding": { "service": "core-org", "column": "status" }
+        "coreBinding": { "service": "core-service", "column": "status" }
       }
     }
   ]

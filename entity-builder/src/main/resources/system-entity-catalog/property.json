@@ -5,7 +5,7 @@
     "name": "Property",
     "slug": "property",
     "categoryKey": "master_data",
-    "description": "Building or asset; core-org API; external_id = property_id.",
+    "description": "Building or asset; core-service API; external_id = property_id.",
     "defaultDisplayFieldSlug": "property_name"
   },
   "fields": [
@@ -18,7 +18,7 @@
       "pii": false,
       "config": {
         "storage": "CORE_DOMAIN",
-        "coreBinding": { "service": "core-org", "column": "company_id" }
+        "coreBinding": { "service": "core-service", "column": "company_id" }
       }
     },
     {
@@ -30,7 +30,7 @@
       "pii": false,
       "config": {
         "storage": "CORE_DOMAIN",
-        "coreBinding": { "service": "core-org", "column": "location_id" }
+        "coreBinding": { "service": "core-service", "column": "location_id" }
       }
     },
     {
@@ -42,7 +42,7 @@
       "pii": false,
       "config": {
         "storage": "CORE_DOMAIN",
-        "coreBinding": { "service": "core-org", "column": "property_name" }
+        "coreBinding": { "service": "core-service", "column": "property_name" }
       }
     },
     {
@@ -54,7 +54,7 @@
       "pii": false,
       "config": {
         "storage": "CORE_DOMAIN",
-        "coreBinding": { "service": "core-org", "column": "property_type" }
+        "coreBinding": { "service": "core-service", "column": "property_type" }
       }
     }
   ]

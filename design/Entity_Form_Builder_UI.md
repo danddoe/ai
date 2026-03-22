@@ -12,25 +12,39 @@
 | **Frontend** | **React + TypeScript**, static SPA. |
 | **URLs** | **Honor deep links** — `BrowserRouter` (or equivalent) + server/deploy **fallback to `index.html`** for non-file routes. |
 | **API entry** | Browser talks **only to API gateway** (e.g. port 8000); gateway routes to IAM + entity-builder ([`api-gateway/application.yml`](../api-gateway/src/main/resources/application.yml)). |
-| **Auth tokens** | **Access token:** hold **in memory** only (React state/module closure). **Refresh:** **`httpOnly` + `Secure` + `SameSite` cookie**; SPA does **not** read refresh token from JS. **Implication:** login/refresh responses must **set the cookie** (typically **gateway filter** or **IAM** change); today IAM returns refresh in JSON — **implementation work** to align. |
+| **Auth tokens** | **Access token:** hold **in memory** only (React state/module closure). **Refresh:** **`httpOnly` + `Secure` + `SameSite` cookie** (`erp_refresh`); SPA does **not** read refresh from JS. IAM defaults to cookie mode; gateway forwards `Set-Cookie`. |
 | **Entities / fields API** | Add **`GET /v1/entities`** (list) and **`GET /v1/entities/{entityId}/fields`**. |
 | **Layouts per entity** | **Many named layouts**; **at most one `isDefault: true`** per entity (enforce in `FormLayoutService` + DB constraint if feasible). |
 | **Accessibility** | **Keyboard-first**; **no dependency on drag-and-drop** — provide **Add to region / Move up / Move down** (and similar) for all structure edits. Optional DnD later as enhancement. |
 
 ## Implementation checklist
 
-- [ ] **Gateway:** ensure routes for new paths (e.g. `/v1/form-layout-templates**` if not nested under `/v1/entities/**`).
-- [ ] **Auth:** access in memory + refresh in `httpOnly` cookie via gateway/IAM contract; `POST /auth/refresh` with credentials (`fetch(..., { credentials: 'include' })`).
-- [ ] **Backend:** `GET /v1/entities`, `GET /v1/entities/{entityId}/fields`.
-- [ ] **Backend:** classpath template listing + `POST /v1/entities/{entityId}/form-layouts/from-template` (copy JSON → new `FormLayout`).
-- [ ] **Backend:** validate layout JSON (regions v2); enforce **one `isDefault`** per entity.
-- [ ] **SPA:** React + TS, router deep links, gateway base URL env.
-- [ ] **Builder UI:** three-panel shell; **keyboard / non-DnD** structure editing; template picker + orphan resolution on clone.
+- [x] **Gateway:** ensure routes for new paths (e.g. `/v1/form-layout-templates**` if not nested under `/v1/entities/**`).
+- [x] **Auth:** access in memory + refresh in `httpOnly` cookie via gateway/IAM contract; `POST /auth/refresh` with credentials (`fetch(..., { credentials: 'include' })`).
+- [x] **Backend:** `GET /v1/entities`, `GET /v1/entities/{entityId}/fields`.
+- [x] **Backend:** classpath template listing + `POST /v1/entities/{entityId}/form-layouts/from-template` (copy JSON → new `FormLayout`).
+- [x] **Backend:** validate layout JSON (regions v2); enforce **one `isDefault`** per entity (`FormLayoutJsonValidator` for `version: 2`; partial unique index + `FormLayoutService` for default).
+- [x] **SPA:** React + TS, router deep links, gateway base URL env.
+- [x] **Builder UI:** three-panel shell; **keyboard / non-DnD** structure editing; template picker + orphan resolution on clone.
+- [x] **SPA:** create entity (`POST /v1/entities`) from [`EntitiesPage`](../erp-portal/src/pages/EntitiesPage.tsx); navigate to layouts.
+- [x] **SPA:** entity settings modal (`PATCH /v1/entities/{id}`) — name, slug, description, default display field — from [`EntityLayoutsPage`](../erp-portal/src/pages/EntityLayoutsPage.tsx).
+- [x] **SPA:** edit field (`PATCH /v1/entities/{entityId}/fields/{fieldId}`) from data dictionary; field type read-only after create.
+- [x] **SPA:** `entity_builder:schema:write` gating via JWT `permissions` claim ([`jwtPermissions`](../erp-portal/src/auth/jwtPermissions.ts)); read-only users can browse layouts without mutating.
+
+## Entity & field lifecycle (portal)
+
+| Route / UI | API |
+| ---------- | --- |
+| `/entities` — **New entity**, empty-state CTA | `POST /v1/entities` |
+| `/entities/:entityId/layouts` — **Entity settings** | `PATCH /v1/entities/{entityId}` (optional `clearDefaultDisplayField` when clearing default display field) |
+| Builder left rail — **+ New field** | `POST .../fields` (existing) |
+| Builder left rail — **Edit** per field | `PATCH .../fields/{fieldId}` |
+| Builder — **Save**, structure/properties edits, **Start from template**, new layout buttons | Gated when JWT lacks `entity_builder:schema:write` |
 
 ## Goals
 
 - **Login** via gateway → IAM (`POST /auth/login` with `tenantSlugOrId`, `email`, `password`); access token in memory; refresh cookie set by server.
-- **Left — Data dictionary:** all **schema fields** for the current entity. **“Create new database field”** → `POST /v1/entities/{entityId}/fields` ([`EntityFieldsController`](../entity-builder/src/main/java/com/erp/entitybuilder/web/v1/EntityFieldsController.java)). New fields appear in the list; they are **not** on the form until placed via **Add to region** (or similar).
+- **Left — Data dictionary:** all **schema fields** for the current entity. **“Create new database field”** → `POST /v1/entities/{entityId}/fields` ([`EntityFieldsController`](../entity-builder/src/main/java/com/erp/entitybuilder/web/v1/EntityFieldsController.java)). **Edit** → `PATCH .../fields/{fieldId}` (name, slug, required, PII, `config.isSearchable`; type fixed after create). New fields appear in the list; they are **not** on the form until placed via **Add to region** (or similar).
 - **Center — Form builder:** edit **regions** (header / tabs / detail) and their **rows** → `columns` → **items**; persist with `PATCH /v1/entities/{entityId}/form-layouts/{layoutId}` ([`FormLayoutsController`](../entity-builder/src/main/java/com/erp/entitybuilder/web/v1/FormLayoutsController.java)).
 - **Right — Properties:** when an item is selected, edit **presentation** only (label, placeholder, help, read-only, hidden, width, component hint).
 
@@ -44,10 +58,10 @@
 
 | Capability | Today | v1 need |
 | ---------- | ----- | ------- |
-| List entities | No `GET /v1/entities` | **Add** paginated list |
-| List fields | Not on `EntityFieldsController` | **Add** `GET /v1/entities/{entityId}/fields` |
-| Templates | — | **Classpath** files + `GET /v1/form-layout-templates` + **from-template** create |
-| Default layout | `isDefault` on `FormLayout` | **Enforce** single default per entity per tenant |
+| List entities | `GET /v1/entities` (full list; pagination later if needed) | Done |
+| List fields | `GET /v1/entities/{entityId}/fields` | Done |
+| Templates | Classpath `form-layout-library/` + index | `GET /v1/form-layout-templates`, `POST .../form-layouts/from-template` |
+| Default layout | Partial unique index + service | Single `is_default` per `(tenant_id, entity_id)` |
 
 ## Form layout library (templates) — classpath only (v1)
 
@@ -126,7 +140,7 @@ Top level uses **`regions`**. Each region has **`role`**: `header` | `detail` | 
 ## Left sidebar — UX
 
 - Search/filter fields; show **on form / not on form** (derive from layout walk).
-- **Create new database field** modal; optional **Edit schema** → PATCH field.
+- **Create new database field** modal; **Edit** on each row → PATCH field (schema write only).
 
 ## Center — structure editor (keyboard / non-DnD)
 
@@ -164,15 +178,53 @@ flowchart LR
   Lib[Classpath templates]
   Login -->|POST /auth| GW
   GW --> IAM
-  Shell -->|GET /v1/entities| GW
+  Shell -->|GET POST entities| GW
   Builder -->|GET fields layouts PATCH| GW
   GW --> EB
   Lib -.->|read files| EB
   Builder --> Lib
 ```
 
-## Out of scope (v1)
+## Runtime record entry (portal)
 
-- **End-user runtime** (render layout for data entry).
+The SPA includes a **minimal** data-entry runtime (list → form) alongside the admin builder.
+
+| Route | Purpose |
+| ----- | ------- |
+| `/entities/:entityId/records` | Paginated record list; **display** column uses `defaultDisplayFieldSlug` when set. |
+| `/entities/:entityId/records/new` | Create record using the entity’s **default** form layout (`isDefault: true`). |
+| `/entities/:entityId/records/:recordId` | Edit record (same default layout). |
+
+**APIs (via gateway):**
+
+- Records: `GET/POST/PATCH/DELETE` under `/v1/tenants/{tenantId}/entities/{entityId}/records` (tenant id from JWT `tenant_id`).
+- Schema: `GET /v1/entities/{entityId}`, `.../fields`, `.../form-layouts` for layout + field types.
+
+**Permissions (JWT `permissions`, UI hints only):**
+
+- `entity_builder:records:read` — list and open form.
+- `entity_builder:records:write` — add, save, delete.
+- `entity_builder:pii:read` — show editable PII field values; without it, PII inputs are locked.
+
+**Multi-step (wizard):** optional on layout v2 JSON, validated in `FormLayoutJsonValidator`:
+
+```json
+"runtime": {
+  "recordEntry": {
+    "flow": "wizard",
+    "wizard": { "stepOrderRegionIds": ["reg-header", "reg-tab-main"] }
+  }
+}
+```
+
+Each id must match a region `id`. The portal shows **Next / Back** and **Save** on the last step only. With `"flow": "free"` (or omitted `runtime`), all regions render with **tab groups** merged by `tabGroupId` as in the builder model.
+
+**Not implemented yet in runtime:** relationship-bound **detail** grids, reference pickers, and builder UI toggles for `runtime` (edit via layout JSON or API).
+
+**Create UI wizard:** register list/form/wizard screens and IAM nav entries from [`/ui/create`](../erp-portal/src/pages/CreateUiWizardPage.tsx); see [`design/Portal_UI_Wizard.md`](Portal_UI_Wizard.md).
+
+## Out of scope (v1 builder / product)
+
 - DB-backed template catalog.
 - Full theming / i18n beyond stored strings.
+- **`reference` field type** in create/edit field modals (needs validated `config` contract, e.g. target entity).

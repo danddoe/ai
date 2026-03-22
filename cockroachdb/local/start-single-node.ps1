@@ -1,18 +1,31 @@
-﻿param(
+param(
   [string]$CockroachPath = "",
-  [string]$StoreDir = "$(Resolve-Path (Join-Path $PSScriptRoot "..\data"))",
+  [string]$StoreDir = "",
   [string]$ListenAddr = "localhost:26257",
-  [string]$HttpAddr = "localhost:8080"
+  [string]$HttpAddr = "localhost:8090"
 )
 
 $ErrorActionPreference = 'Stop'
+
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+if (-not $StoreDir) {
+  $StoreDir = Join-Path $repoRoot "cockroach-data"
+}
+New-Item -ItemType Directory -Force -Path $StoreDir | Out-Null
+$StoreDir = (Resolve-Path -LiteralPath $StoreDir).Path
+
+$versionFile = Join-Path $repoRoot "VERSION"
+$recommended = $null
+if (Test-Path $versionFile) {
+  $recommended = (Get-Content $versionFile -Raw).Trim()
+}
 
 function Resolve-CockroachExe {
   if ($CockroachPath -and (Test-Path $CockroachPath)) {
     return (Resolve-Path $CockroachPath).Path
   }
 
-  $repoCockroach = Join-Path (Resolve-Path (Join-Path $PSScriptRoot ".." )).Path "bin\cockroach.exe"
+  $repoCockroach = Join-Path $repoRoot "bin\cockroach.exe"
   if (Test-Path $repoCockroach) {
     return $repoCockroach
   }
@@ -27,9 +40,10 @@ function Resolve-CockroachExe {
 
 $cockroachExe = Resolve-CockroachExe
 
-New-Item -ItemType Directory -Force -Path $StoreDir | Out-Null
-
 Write-Host "Starting CockroachDB single-node (insecure)..."
+if ($recommended) {
+  Write-Host "- Repo pin: v$recommended (see cockroachdb/VERSION and docker-compose.yml)"
+}
 Write-Host "- SQL:  $ListenAddr"
 Write-Host "- UI:   http://$HttpAddr"
 Write-Host "- Data: $StoreDir"

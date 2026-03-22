@@ -23,3 +23,16 @@ Frontend / consumers: If a dynamic form UI (or any client) is going to render it
 Documented only (e.g. in the API spec or a “Form layout JSON schema” doc), with the backend still storing any JSON, or
 Enforced later (e.g. JSON Schema validation in the API or in a separate “layout validator” step).
 So: in form_layouts the layout is free-form JSON in the current plan; for the actual UI you’d add a defined layout schema as documentation and/or validation in a later step.
+
+
+RBAC ABAC
+Should we build it now? RBAC and  ABAC as predicates on top?
+
+Sensible default for you right now
+Now (minimal): Keep current Spring authorities + tenant check; optionally document a permission naming convention and where IAM vs entity-builder boundaries are.
+Next step (when second role appears): Internal RBAC — principals, tenant roles, permissions, assignment, one place that answers “what permissions does this user have in this tenant?” (JWT can carry role ids or resolved permissions; gateway/service validates).
+Later (per feature): Predicates / row grants only for the workflows that need them; grow a small policy evaluator used by record read first, then wire search the same way (joins or materialized grants).
+Bottom line
+RBAC: Start when you have multiple meaningful roles or permission sprawl — not necessarily today, but before you duplicate ad hoc checks everywhere.
+ABAC as predicates: Defer until you have at least one non-negotiable row/field rule; then add the smallest structure that expresses it (often row ACL or simple attribute checks, not a full generic engine on day one).
+So: don’t build the full RBAC+ABAC tower now unless you’re actively implementing differentiated access; do plan the phased path so you don’t paint search and dynamic entities into a corner.

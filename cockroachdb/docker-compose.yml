@@ -1,0 +1,18 @@
+# Pin matches cockroachdb/VERSION — update both when bumping Cockroach.
+# https://www.cockroachlabs.com/docs/stable/install-cockroachdb-docker.html
+services:
+  cockroach:
+    image: cockroachdb/cockroach:v25.2.15
+    container_name: erp-cockroach
+    command:
+      - start-single-node
+      - --insecure
+      - --listen-addr=0.0.0.0:26257
+      - --http-addr=0.0.0.0:8080
+      - --advertise-addr=localhost:26257
+      - --store=/cockroach/cockroach-data
+    ports:
+      - "26257:26257"
+      - "8080:8080"
+    volumes:
+      - ./data:/cockroach/cockroach-data
