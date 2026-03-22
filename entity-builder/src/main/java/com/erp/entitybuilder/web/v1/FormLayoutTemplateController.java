@@ -27,7 +27,7 @@ public class FormLayoutTemplateController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAuthority('entity_builder:schema:read')")
+    @PreAuthorize("@entityBuilderSecurity.canReadSchema()")
     public List<FormLayoutTemplateDtos.FormLayoutTemplateDto> list(
             @RequestParam(name = "includeLayout", defaultValue = "false") boolean includeLayout
     ) {

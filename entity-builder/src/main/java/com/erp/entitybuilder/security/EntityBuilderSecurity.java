@@ -22,6 +22,27 @@ public class EntityBuilderSecurity {
                         a.getAuthority().equals("entity_builder:tenants:admin"));
     }
 
+    /** Schema read endpoints: allow {@code entity_builder:schema:read} or {@code entity_builder:schema:write}. */
+    public boolean canReadSchema() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null) return false;
+        return auth.getAuthorities().stream().anyMatch(a -> {
+            String g = a.getAuthority();
+            return "entity_builder:schema:read".equals(g) || "entity_builder:schema:write".equals(g);
+        });
+    }
+
+    /**
+     * Entity metadata reads for portal UIs (e.g. Create UI entity picker): schema read/write, or IAM
+     * {@code portal:navigation:write} so nav editors can resolve entity ids without full schema read.
+     */
+    public boolean canReadEntitiesForPortalUi() {
+        if (canReadSchema()) return true;
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null) return false;
+        return auth.getAuthorities().stream().anyMatch(a -> "portal:navigation:write".equals(a.getAuthority()));
+    }
+
     private TenantPrincipal principalOrNull() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null) return null;

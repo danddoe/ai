@@ -1,0 +1,25 @@
+-- URL-friendly slugs for named entities
+
+ALTER TABLE countries
+    ADD COLUMN IF NOT EXISTS slug VARCHAR(128);
+
+ALTER TABLE companies
+    ADD COLUMN IF NOT EXISTS slug VARCHAR(128);
+
+ALTER TABLE business_units
+    ADD COLUMN IF NOT EXISTS slug VARCHAR(128);
+
+ALTER TABLE regions
+    ADD COLUMN IF NOT EXISTS slug VARCHAR(128);
+
+ALTER TABLE locations
+    ADD COLUMN IF NOT EXISTS slug VARCHAR(128);
+
+ALTER TABLE properties
+    ADD COLUMN IF NOT EXISTS slug VARCHAR(128);
+
+ALTER TABLE property_units
+    ADD COLUMN IF NOT EXISTS slug VARCHAR(128);
+
+ALTER TABLE portal_host_bindings
+    ADD COLUMN IF NOT EXISTS slug VARCHAR(128);

@@ -28,7 +28,7 @@ public class FormLayoutsController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAuthority('entity_builder:schema:read')")
+    @PreAuthorize("@entityBuilderSecurity.canReadSchema()")
     public List<FormLayoutDtos.FormLayoutDto> list(@PathVariable UUID entityId) {
         UUID tenantId = SecurityUtil.principal().getTenantId();
         return formLayoutService.list(tenantId, entityId).stream().map(this::toDto).toList();
@@ -70,7 +70,7 @@ public class FormLayoutsController {
     }
 
     @GetMapping("/{layoutId}")
-    @PreAuthorize("hasAuthority('entity_builder:schema:read')")
+    @PreAuthorize("@entityBuilderSecurity.canReadSchema()")
     public FormLayoutDtos.FormLayoutDto get(@PathVariable UUID entityId, @PathVariable UUID layoutId) {
         UUID tenantId = SecurityUtil.principal().getTenantId();
         FormLayout l = formLayoutService.get(tenantId, layoutId);

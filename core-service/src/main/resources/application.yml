@@ -28,3 +28,5 @@ app:
   jwt:
     issuer: ${JWT_ISSUER:erp-iam}
     audience: ${JWT_AUDIENCE:erp-api}
+  gateway:
+    trust-secret: ${GATEWAY_TRUST_SECRET:}

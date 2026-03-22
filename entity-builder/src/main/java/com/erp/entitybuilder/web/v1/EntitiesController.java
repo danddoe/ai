@@ -22,7 +22,7 @@ public class EntitiesController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAuthority('entity_builder:schema:read')")
+    @PreAuthorize("@entityBuilderSecurity.canReadEntitiesForPortalUi()")
     public List<EntityDtos.EntityDto> list(
             @RequestParam(required = false) String categoryKey,
             @RequestParam(required = false) String q
@@ -51,7 +51,7 @@ public class EntitiesController {
     }
 
     @GetMapping("/{entityId}")
-    @PreAuthorize("hasAuthority('entity_builder:schema:read')")
+    @PreAuthorize("@entityBuilderSecurity.canReadEntitiesForPortalUi()")
     public EntityDtos.EntityDto get(@PathVariable UUID entityId) {
         UUID tenantId = SecurityUtil.principal().getTenantId();
         EntityDefinition e = schemaService.getEntity(tenantId, entityId);

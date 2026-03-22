@@ -69,6 +69,7 @@ public class CompaniesController {
                 c.getCompanyName(),
                 c.getOwnershipPct(),
                 c.getBaseCurrency(),
+                c.getDefaultPortalBuId(),
                 c.getCreatedAt(),
                 c.getUpdatedAt()
         );

@@ -1,6 +1,8 @@
 package com.erp.coreservice.domain;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -24,11 +26,21 @@ public class Company {
     @Column(name = "company_name", nullable = false)
     private String companyName;
 
+    @Column(name = "slug", length = 128)
+    private String slug;
+
+    @Column(name = "alias", length = 255)
+    private String alias;
+
     @Column(name = "ownership_pct", precision = 5, scale = 2)
     private BigDecimal ownershipPct;
 
+    @JdbcTypeCode(SqlTypes.CHAR)
     @Column(name = "base_currency", nullable = false, length = 3)
     private String baseCurrency;
+
+    @Column(name = "default_portal_bu_id")
+    private UUID defaultPortalBuId;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -80,6 +92,22 @@ public class Company {
         this.companyName = companyName;
     }
 
+    public String getSlug() {
+        return slug;
+    }
+
+    public void setSlug(String slug) {
+        this.slug = slug;
+    }
+
+    public String getAlias() {
+        return alias;
+    }
+
+    public void setAlias(String alias) {
+        this.alias = alias;
+    }
+
     public BigDecimal getOwnershipPct() {
         return ownershipPct;
     }
@@ -94,6 +122,14 @@ public class Company {
 
     public void setBaseCurrency(String baseCurrency) {
         this.baseCurrency = baseCurrency;
+    }
+
+    public UUID getDefaultPortalBuId() {
+        return defaultPortalBuId;
+    }
+
+    public void setDefaultPortalBuId(UUID defaultPortalBuId) {
+        this.defaultPortalBuId = defaultPortalBuId;
     }
 
     public Instant getCreatedAt() {

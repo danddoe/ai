@@ -2,6 +2,8 @@ package com.erp.coreservice.service;
 
 import com.erp.coreservice.domain.Company;
 import com.erp.coreservice.domain.CompanyHierarchyHistory;
+import com.erp.coreservice.domain.BusinessUnit;
+import com.erp.coreservice.repository.BusinessUnitRepository;
 import com.erp.coreservice.repository.CompanyHierarchyHistoryRepository;
 import com.erp.coreservice.repository.CompanyRepository;
 import com.erp.coreservice.web.ApiException;
@@ -22,13 +24,16 @@ public class CompanyService {
 
     private final CompanyRepository companyRepository;
     private final CompanyHierarchyHistoryRepository companyHierarchyHistoryRepository;
+    private final BusinessUnitRepository businessUnitRepository;
 
     public CompanyService(
             CompanyRepository companyRepository,
-            CompanyHierarchyHistoryRepository companyHierarchyHistoryRepository
+            CompanyHierarchyHistoryRepository companyHierarchyHistoryRepository,
+            BusinessUnitRepository businessUnitRepository
     ) {
         this.companyRepository = companyRepository;
         this.companyHierarchyHistoryRepository = companyHierarchyHistoryRepository;
+        this.businessUnitRepository = businessUnitRepository;
     }
 
     @Transactional
@@ -112,6 +117,13 @@ public class CompanyService {
             c.setBaseCurrency(bc);
         }
 
+        if (req.isClearDefaultPortalBu()) {
+            c.setDefaultPortalBuId(null);
+        } else if (req.getDefaultPortalBuId() != null) {
+            assertDefaultPortalBuForCompany(tenantId, companyId, req.getDefaultPortalBuId());
+            c.setDefaultPortalBuId(req.getDefaultPortalBuId());
+        }
+
         Company saved = companyRepository.save(c);
         if (hierarchyChanged) {
             LocalDate today = LocalDate.now();
@@ -119,6 +131,14 @@ public class CompanyService {
             openCompanyHistory(tenantId, saved.getParentCompanyId(), saved.getCompanyId(), saved.getOwnershipPct(), today);
         }
         return saved;
+    }
+
+    private void assertDefaultPortalBuForCompany(UUID tenantId, UUID companyId, UUID buId) {
+        BusinessUnit bu = businessUnitRepository.findByBuIdAndTenantId(buId, tenantId)
+                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "bad_request", "Business unit not found"));
+        if (!bu.getCompanyId().equals(companyId)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "bad_request", "defaultPortalBuId must belong to this company");
+        }
     }
 
     private static boolean sameBigDecimal(BigDecimal a, BigDecimal b) {

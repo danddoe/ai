@@ -29,7 +29,7 @@ public class EntityFieldsController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAuthority('entity_builder:schema:read')")
+    @PreAuthorize("@entityBuilderSecurity.canReadSchema()")
     public List<EntityFieldDtos.EntityFieldDto> list(@PathVariable UUID entityId) {
         UUID tenantId = SecurityUtil.principal().getTenantId();
         return schemaService.listFields(tenantId, entityId).stream().map(this::toDto).toList();
@@ -60,7 +60,7 @@ public class EntityFieldsController {
     }
 
     @GetMapping("/{fieldId}")
-    @PreAuthorize("hasAuthority('entity_builder:schema:read')")
+    @PreAuthorize("@entityBuilderSecurity.canReadSchema()")
     public EntityFieldDtos.EntityFieldDto get(
             @PathVariable UUID entityId,
             @PathVariable UUID fieldId

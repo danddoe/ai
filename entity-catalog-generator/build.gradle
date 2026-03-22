@@ -1,0 +1,29 @@
+plugins {
+    id 'java'
+}
+
+dependencies {
+    implementation project(':core-service')
+    implementation project(':loans-module')
+    implementation 'com.fasterxml.jackson.core:jackson-databind'
+    implementation 'jakarta.persistence:jakarta.persistence-api'
+}
+
+tasks.register('generateEntityCatalog', JavaExec) {
+    group = 'build'
+    description = 'Generates entity-builder system-entity-catalog/*.json from catalog-spec.json using JPA metadata. ' +
+            'Overwrites existing manifests by default; use -PcatalogGen.overwrite=false to skip existing files. ' +
+            'Optional -PcatalogGen.updateIndex=true merges new manifest keys into index.json.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.erp.cataloggen.EntityCatalogGenerator'
+    args(
+            project.file('catalog-spec.json').absolutePath,
+            rootProject.file('entity-builder/src/main/resources/system-entity-catalog').absolutePath
+    )
+    if (project.findProperty('catalogGen.overwrite') == 'false') {
+        systemProperty 'catalogGen.overwrite', 'false'
+    }
+    if (project.findProperty('catalogGen.updateIndex') == 'true') {
+        systemProperty 'catalogGen.updateIndex', 'true'
+    }
+}

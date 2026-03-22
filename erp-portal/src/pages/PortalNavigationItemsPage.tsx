@@ -22,6 +22,10 @@ const PARENT_KEEP = '__keep__';
 const ENTITY_RECORDS_ROUTE_RE =
   /^\/entities\/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\/records(\/new)?$/;
 
+/** Path-only: per-entity audit timeline hub. */
+const ENTITY_AUDIT_ROUTE_RE =
+  /^\/entities\/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\/audit$/;
+
 /** Mirrors IAM {@code isAllowedInternalSpaRoute} for client-side validation. */
 function isAllowedInternalSpaRouteClient(route: string): boolean {
   const trimmed = route.trim();
@@ -30,11 +34,12 @@ function isAllowedInternalSpaRouteClient(route: string): boolean {
   const pathRaw = (qIdx < 0 ? trimmed : trimmed.slice(0, qIdx)).trim();
   const pathOnly = pathRaw.length > 1 && pathRaw.endsWith('/') ? pathRaw.slice(0, -1) : pathRaw;
   const query = qIdx < 0 ? '' : trimmed.slice(qIdx + 1);
-  if (query.trim() !== '' && (pathOnly === '/home' || pathOnly === '/entities')) {
+  if (query.trim() !== '' && (pathOnly === '/home' || pathOnly === '/entities' || pathOnly === '/audit')) {
     return false;
   }
-  if (pathOnly === '/home' || pathOnly === '/entities') return true;
-  return ENTITY_RECORDS_ROUTE_RE.test(pathOnly);
+  if (pathOnly === '/home' || pathOnly === '/entities' || pathOnly === '/audit') return true;
+  if (ENTITY_RECORDS_ROUTE_RE.test(pathOnly)) return true;
+  return ENTITY_AUDIT_ROUTE_RE.test(pathOnly);
 }
 
 /** IAM {@code portal_navigation_items.type}; labels are for the form only. */
@@ -238,7 +243,7 @@ export function PortalNavigationItemsPage() {
     if (navType === 'internal') {
       if (!isAllowedInternalSpaRouteClient(route)) {
         setFormError(
-          'Internal type: use /home, /entities, or /entities/{uuid}/records (or …/records/new; records may use allowed query params).'
+          'Internal type: use /home, /entities, /audit, /entities/{uuid}/audit, or /entities/{uuid}/records (or …/records/new; records may use allowed query params).'
         );
         return;
       }
@@ -312,7 +317,7 @@ export function PortalNavigationItemsPage() {
         if (rt !== '') {
           if (!isAllowedInternalSpaRouteClient(rt)) {
             setFormError(
-              'Internal type: use /home, /entities, or /entities/{uuid}/records (or …/records/new; records may use allowed query params).'
+              'Internal type: use /home, /entities, /audit, /entities/{uuid}/audit, or /entities/{uuid}/records (or …/records/new; records may use allowed query params).'
             );
             setSaving(false);
             return;
@@ -495,7 +500,7 @@ export function PortalNavigationItemsPage() {
           )}
           <p className="builder-muted" style={{ marginTop: 0, fontSize: '0.8125rem' }}>
             <strong>Type</strong> controls how the shell renders the row. Use <strong>internal</strong> for in-app links
-            (<code>/home</code>, <code>/entities</code>, or entity records URLs). External opens in a new tab; section and
+            (<code>/home</code>, <code>/entities</code>, <code>/audit</code>, <code>/entities/…/audit</code>, or entity records URLs). External opens in a new tab; section and
             divider may leave route empty.
           </p>
           <div style={{ display: 'grid', gap: 12 }}>
@@ -605,7 +610,7 @@ export function PortalNavigationItemsPage() {
                 onChange={(e) => setRoutePath(e.target.value)}
                 placeholder={
                   navType === 'internal'
-                    ? '/home, /entities, or /entities/{uuid}/records…'
+                    ? '/home, /entities, /audit, /entities/{uuid}/audit, or /entities/{uuid}/records…'
                     : navType === 'external'
                       ? 'https://…'
                       : 'Optional for section / divider'

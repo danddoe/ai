@@ -20,6 +20,21 @@ class RecordListViewJsonValidatorTest {
     }
 
     @Test
+    void acceptsShowRecordIdFalse() {
+        String json = """
+                {"version":1,"columns":[{"fieldSlug":"a","order":0}],"showRecordId":false}
+                """;
+        assertThatCode(() -> validator.validateOrThrow(json)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void rejectsNonBooleanShowRecordId() {
+        assertThatThrownBy(() -> validator.validateOrThrow(
+                "{\"version\":1,\"columns\":[{\"fieldSlug\":\"a\",\"order\":0}],\"showRecordId\":\"no\"}"))
+                .isInstanceOf(ApiException.class);
+    }
+
+    @Test
     void acceptsSlugWithHyphenAndDotLikeEntityFields() {
         String json = """
                 {"version":1,"columns":[

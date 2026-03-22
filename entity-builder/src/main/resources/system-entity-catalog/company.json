@@ -1,71 +1,120 @@
 {
-  "version": 1,
-  "manifestKey": "company",
-  "entity": {
-    "name": "Company",
-    "slug": "company",
-    "categoryKey": "master_data",
-    "description": "Legal entity; core columns in core-service; tenant extensions in entity_record_values (external_id = company_id).",
-    "defaultDisplayFieldSlug": "company_name"
+  "version" : 1,
+  "manifestKey" : "company",
+  "entity" : {
+    "name" : "Company",
+    "slug" : "company",
+    "categoryKey" : "master_data",
+    "description" : "Legal entity; core columns in core-service; tenant extensions in entity_record_values (external_id = company_id).",
+    "defaultDisplayFieldSlug" : "company_name"
   },
-  "fields": [
-    {
-      "name": "Parent company",
-      "slug": "parent_company_id",
-      "sortOrder": 10,
-      "fieldType": "string",
-      "required": false,
-      "pii": false,
-      "config": {
-        "storage": "CORE_DOMAIN",
-        "coreBinding": { "service": "core-service", "column": "parent_company_id" },
-        "readOnly": false
+  "fields" : [ {
+    "name" : "Parent Company Id",
+    "slug" : "parent_company_id",
+    "sortOrder" : 10,
+    "fieldType" : "string",
+    "required" : false,
+    "pii" : false,
+    "config" : {
+      "storage" : "CORE_DOMAIN",
+      "coreBinding" : {
+        "service" : "core-service",
+        "column" : "parent_company_id"
       }
-    },
-    {
-      "name": "Company name",
-      "slug": "company_name",
-      "sortOrder": 20,
-      "fieldType": "string",
-      "required": true,
-      "pii": false,
-      "config": {
-        "storage": "CORE_DOMAIN",
-        "coreBinding": { "service": "core-service", "column": "company_name" }
-      }
-    },
-    {
-      "name": "Ownership %",
-      "slug": "ownership_pct",
-      "sortOrder": 30,
-      "fieldType": "number",
-      "required": false,
-      "pii": false,
-      "config": {
-        "storage": "CORE_DOMAIN",
-        "coreBinding": { "service": "core-service", "column": "ownership_pct" }
-      }
-    },
-    {
-      "name": "Base currency",
-      "slug": "base_currency",
-      "sortOrder": 40,
-      "fieldType": "string",
-      "required": true,
-      "pii": false,
-      "config": {
-        "storage": "CORE_DOMAIN",
-        "coreBinding": { "service": "core-service", "column": "base_currency" }
-      }
-    },
-    {
-      "name": "Extension notes",
-      "slug": "extension_notes",
-      "sortOrder": 100,
-      "fieldType": "string",
-      "required": false,
-      "pii": false,
-      "config": { "storage": "EAV_EXTENSION" }
     }
-  ]
+  }, {
+    "name" : "Company Name",
+    "slug" : "company_name",
+    "sortOrder" : 20,
+    "fieldType" : "string",
+    "required" : true,
+    "pii" : false,
+    "config" : {
+      "storage" : "CORE_DOMAIN",
+      "coreBinding" : {
+        "service" : "core-service",
+        "column" : "company_name"
+      }
+    }
+  }, {
+    "name" : "Slug",
+    "slug" : "slug",
+    "sortOrder" : 30,
+    "fieldType" : "string",
+    "required" : false,
+    "pii" : false,
+    "config" : {
+      "storage" : "CORE_DOMAIN",
+      "coreBinding" : {
+        "service" : "core-service",
+        "column" : "slug"
+      }
+    }
+  }, {
+    "name" : "Alias",
+    "slug" : "alias",
+    "sortOrder" : 40,
+    "fieldType" : "string",
+    "required" : false,
+    "pii" : false,
+    "config" : {
+      "storage" : "CORE_DOMAIN",
+      "coreBinding" : {
+        "service" : "core-service",
+        "column" : "alias"
+      }
+    }
+  }, {
+    "name" : "Ownership Pct",
+    "slug" : "ownership_pct",
+    "sortOrder" : 50,
+    "fieldType" : "number",
+    "required" : false,
+    "pii" : false,
+    "config" : {
+      "storage" : "CORE_DOMAIN",
+      "coreBinding" : {
+        "service" : "core-service",
+        "column" : "ownership_pct"
+      }
+    }
+  }, {
+    "name" : "Base Currency",
+    "slug" : "base_currency",
+    "sortOrder" : 60,
+    "fieldType" : "string",
+    "required" : true,
+    "pii" : false,
+    "config" : {
+      "storage" : "CORE_DOMAIN",
+      "coreBinding" : {
+        "service" : "core-service",
+        "column" : "base_currency"
+      }
+    }
+  }, {
+    "name" : "Default Portal Bu Id",
+    "slug" : "default_portal_bu_id",
+    "sortOrder" : 70,
+    "fieldType" : "string",
+    "required" : false,
+    "pii" : false,
+    "config" : {
+      "storage" : "CORE_DOMAIN",
+      "coreBinding" : {
+        "service" : "core-service",
+        "column" : "default_portal_bu_id"
+      }
+    }
+  }, {
+    "name" : "Extension notes",
+    "slug" : "extension_notes",
+    "sortOrder" : 100,
+    "fieldType" : "string",
+    "required" : false,
+    "pii" : false,
+    "config" : {
+      "storage" : "EAV_EXTENSION"
+    }
+  } ]
 }

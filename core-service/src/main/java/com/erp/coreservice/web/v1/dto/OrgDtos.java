@@ -23,6 +23,7 @@ public class OrgDtos {
             String companyName,
             BigDecimal ownershipPct,
             String baseCurrency,
+            UUID defaultPortalBuId,
             Instant createdAt,
             Instant updatedAt
     ) {
@@ -90,6 +91,10 @@ public class OrgDtos {
 
         private boolean clearOwnershipPct;
 
+        private UUID defaultPortalBuId;
+
+        private boolean clearDefaultPortalBu;
+
         public String getCompanyName() {
             return companyName;
         }
@@ -136,6 +141,22 @@ public class OrgDtos {
 
         public void setClearOwnershipPct(boolean clearOwnershipPct) {
             this.clearOwnershipPct = clearOwnershipPct;
+        }
+
+        public UUID getDefaultPortalBuId() {
+            return defaultPortalBuId;
+        }
+
+        public void setDefaultPortalBuId(UUID defaultPortalBuId) {
+            this.defaultPortalBuId = defaultPortalBuId;
+        }
+
+        public boolean isClearDefaultPortalBu() {
+            return clearDefaultPortalBu;
+        }
+
+        public void setClearDefaultPortalBu(boolean clearDefaultPortalBu) {
+            this.clearDefaultPortalBu = clearDefaultPortalBu;
         }
     }
 

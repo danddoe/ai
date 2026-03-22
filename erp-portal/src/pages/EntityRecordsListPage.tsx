@@ -17,6 +17,7 @@ import {
 import {
   type RecordListColumnDefinition,
   parseRecordListViewDefinition,
+  RECORD_LIST_ROW_ID_SLUG,
 } from '../utils/recordListViewDefinition';
 import { useAuth } from '../auth/AuthProvider';
 import { buildRecordSearchFilter } from '../utils/recordListSearch';
@@ -97,6 +98,7 @@ export function EntityRecordsListPage() {
   const [savedListView, setSavedListView] = useState<{
     columns: RecordListColumnDefinition[];
     showRowActions: boolean;
+    showRecordId: boolean;
   } | null>(null);
   /** Set when columns come from the default list view without <code>?view=</code> — used for “Edit list view”. */
   const [autoResolvedViewId, setAutoResolvedViewId] = useState<string | null>(null);
@@ -115,9 +117,46 @@ export function EntityRecordsListPage() {
 
   const [searchDraft, setSearchDraft] = useState(qParam);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** After we sync bare `/records` to `?view=&showRecordId=`, avoid repeating unless the user clears `view` again (e.g. picks “Default” in the switcher). */
+  const defaultRecordsQuerySyncedRef = useRef(false);
+  const prevViewIdParamRef = useRef<string>(viewIdParam);
   useEffect(() => {
     setSearchDraft(qParam);
   }, [qParam]);
+
+  useEffect(() => {
+    defaultRecordsQuerySyncedRef.current = false;
+  }, [entityId]);
+
+  useEffect(() => {
+    const prev = prevViewIdParamRef.current;
+    prevViewIdParamRef.current = viewIdParam;
+    if (prev !== '' && viewIdParam === '') {
+      defaultRecordsQuerySyncedRef.current = false;
+    }
+  }, [viewIdParam]);
+
+  /** Bare `/entities/…/records` (no `view=`) uses the entity default list view; mirror that in the URL so portal links and bookmarks match the designer. */
+  useEffect(() => {
+    if (viewIdParam) return;
+    if (colsSlugs.length > 0) return;
+    if (!autoResolvedViewId || !savedListView) return;
+    if (defaultRecordsQuerySyncedRef.current) return;
+
+    defaultRecordsQuerySyncedRef.current = true;
+    setSearchParams(
+      (prev) => {
+        const n = new URLSearchParams(prev);
+        n.set('view', autoResolvedViewId);
+        if (!savedListView.showRecordId) n.set('showRecordId', '0');
+        else n.delete('showRecordId');
+        if (!savedListView.showRowActions) n.set('actions', '0');
+        else n.delete('actions');
+        return n;
+      },
+      { replace: true }
+    );
+  }, [viewIdParam, colsSlugs.length, autoResolvedViewId, savedListView, setSearchParams]);
 
   useEffect(() => {
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
@@ -147,11 +186,12 @@ export function EntityRecordsListPage() {
   }, [fields]);
 
   const visibleColSlugs = useMemo(() => {
+    const skipPk = (s: string) => s.trim().toLowerCase() !== RECORD_LIST_ROW_ID_SLUG;
     if (savedListView) {
-      return savedListView.columns.map((c) => c.fieldSlug).filter((s) => fieldBySlug.has(s));
+      return savedListView.columns.map((c) => c.fieldSlug).filter((s) => fieldBySlug.has(s) && skipPk(s));
     }
     if (!legacyCustomColumns) return [];
-    return colsSlugs.filter((s) => fieldBySlug.has(s));
+    return colsSlugs.filter((s) => fieldBySlug.has(s) && skipPk(s));
   }, [savedListView, legacyCustomColumns, colsSlugs, fieldBySlug]);
 
   const colMetaBySlug = useMemo(() => {
@@ -164,14 +204,29 @@ export function EntityRecordsListPage() {
 
   const inlineSlugs = useMemo(() => {
     if (savedListView) {
-      return new Set(savedListView.columns.filter((c) => c.inlineEditable).map((c) => c.fieldSlug));
+      return new Set(
+        savedListView.columns
+          .filter((c) => c.inlineEditable && c.fieldSlug.trim().toLowerCase() !== RECORD_LIST_ROW_ID_SLUG)
+          .map((c) => c.fieldSlug)
+      );
     }
-    return new Set(parseCommaSlugs(inlineRaw));
+    return new Set(
+      parseCommaSlugs(inlineRaw).filter((s) => s.trim().toLowerCase() !== RECORD_LIST_ROW_ID_SLUG)
+    );
   }, [savedListView, inlineRaw]);
 
   const showActions = savedListView ? savedListView.showRowActions : searchParams.get('actions') !== '0';
 
   const useCustomLayout = visibleColSlugs.length > 0 && (savedListView !== null || legacyCustomColumns);
+
+  /** Explicit `showRecordId` query wins, then saved view definition, else show Id (basic / legacy). */
+  const showRecordIdColumn = (() => {
+    const q = (searchParams.get('showRecordId') ?? searchParams.get('showUuid') ?? '').toLowerCase();
+    if (q === '0' || q === 'false') return false;
+    if (q === '1' || q === 'true') return true;
+    if (savedListView != null) return savedListView.showRecordId;
+    return true;
+  })();
 
   const load = useCallback(async () => {
     if (!tenantId || !entityId || !canRecordsRead) return;
@@ -201,7 +256,11 @@ export function EntityRecordsListPage() {
           throw new Error('List view definition is missing or not version 1');
         }
         viewCols = def.columns.filter((c) => c.visible !== false);
-        setSavedListView({ columns: viewCols, showRowActions: def.showRowActions !== false });
+        setSavedListView({
+          columns: viewCols,
+          showRowActions: def.showRowActions !== false,
+          showRecordId: def.showRecordId !== false,
+        });
         setActiveListViewInfo({ id: dto.id, name: dto.name, isDefault: dto.isDefault });
         appliedSavedListView = true;
       } else if (colsSlugs.length > 0) {
@@ -223,7 +282,11 @@ export function EntityRecordsListPage() {
             setActiveListViewInfo(null);
           } else {
             viewCols = def.columns.filter((c) => c.visible !== false);
-            setSavedListView({ columns: viewCols, showRowActions: def.showRowActions !== false });
+            setSavedListView({
+              columns: viewCols,
+              showRowActions: def.showRowActions !== false,
+              showRecordId: def.showRecordId !== false,
+            });
             setAutoResolvedViewId(defMeta.id);
             setActiveListViewInfo({ id: dto.id, name: dto.name, isDefault: dto.isDefault });
             appliedSavedListView = true;
@@ -232,12 +295,14 @@ export function EntityRecordsListPage() {
       }
 
       let restrictSearch: string[] | null = null;
+      const searchableSlug = (s: string) =>
+        bySlug.has(s) && s.trim().toLowerCase() !== RECORD_LIST_ROW_ID_SLUG;
       if (appliedSavedListView) {
-        const vis = viewCols.map((c) => c.fieldSlug).filter((s) => bySlug.has(s));
+        const vis = viewCols.map((c) => c.fieldSlug).filter(searchableSlug);
         restrictSearch = vis.length > 0 ? vis : null;
       } else {
         const parsedCols = parseCommaSlugs(colsRaw);
-        const visible = parsedCols.filter((s) => bySlug.has(s));
+        const visible = parsedCols.filter(searchableSlug);
         restrictSearch = parsedCols.length > 0 && visible.length > 0 ? visible : null;
       }
       const filter = buildRecordSearchFilter(flds, qParam, restrictSearch);
@@ -377,21 +442,32 @@ export function EntityRecordsListPage() {
                   )}
                   <span style={{ marginLeft: 8 }}>
                     {viewIdParam
-                      ? '— URL includes an explicit list view id.'
-                      : '— loaded as the entity default (URL has no list view id).'}
+                      ? '— URL includes list view id plus column options (e.g. showRecordId for the UUID column).'
+                      : '— default list view: the address bar is updated with matching query params for sharing.'}
                   </span>
                 </>
               )}
               {!legacyCustomColumns && !activeListViewInfo && (
                 <>
-                  Active list: <strong>Basic table</strong> (Id, display field, updated). Create list views under Form
+                  Active list: <strong>Basic table</strong> (Id, display field, updated).                   Use <code>&amp;showRecordId=0</code> (or <code>=1</code>) to override UUID column visibility vs. the saved list
+                  view. Create list views under Form
                   layouts; the one marked <span className="pill pill-on">default</span> loads here automatically.
                 </>
               )}
             </p>
           )}
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div
+          className="records-page-actions"
+          style={{
+            display: 'flex',
+            flexWrap: 'nowrap',
+            gap: 8,
+            alignItems: 'center',
+            maxWidth: '100%',
+            overflowX: 'auto',
+          }}
+        >
           {canRecordsWrite && (
             <Link className="btn btn-primary" to={`/entities/${entityId}/records/new`}>
               Add record
@@ -412,6 +488,9 @@ export function EntityRecordsListPage() {
           )}
           <Link className="btn btn-secondary" to={`/entities/${entityId}/layouts#record-list-views`}>
             Form layouts
+          </Link>
+          <Link className="btn btn-secondary" to={`/entities/${entityId}/audit`}>
+            Activity & audit
           </Link>
         </div>
       </header>
@@ -495,7 +574,7 @@ export function EntityRecordsListPage() {
         <table className="records-table">
           <thead>
             <tr>
-              <th>Id</th>
+              {showRecordIdColumn && <th>Id</th>}
               {useCustomLayout
                 ? visibleColSlugs.map((slug) => {
                     const meta = colMetaBySlug.get(slug);
@@ -522,9 +601,11 @@ export function EntityRecordsListPage() {
           <tbody>
             {items.map((row) => (
               <tr key={row.id}>
-                <td>
-                  <code>{shortId(row.id)}</code>
-                </td>
+                {showRecordIdColumn && (
+                  <td>
+                    <code>{shortId(row.id)}</code>
+                  </td>
+                )}
                 {useCustomLayout
                   ? visibleColSlugs.map((slug) => {
                       const f = fieldBySlug.get(slug);

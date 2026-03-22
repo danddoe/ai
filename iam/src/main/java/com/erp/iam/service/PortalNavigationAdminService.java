@@ -24,10 +24,14 @@ public class PortalNavigationAdminService {
     private static final Pattern ENTITY_RECORDS_PATH =
             Pattern.compile("^/entities/[0-9a-fA-F-]{36}/records(/new)?$");
 
+    /** Per-entity audit timeline (portal SPA). */
+    private static final Pattern ENTITY_AUDIT_PATH =
+            Pattern.compile("^/entities/[0-9a-fA-F-]{36}/audit$");
+
     private static final int MAX_ROUTE_PATH_CHARS = 2048;
 
     private static final Set<String> ALLOWED_RECORD_QUERY_KEYS =
-            Set.of("cols", "inline", "actions", "page", "pageSize", "q", "view");
+            Set.of("cols", "inline", "actions", "page", "pageSize", "q", "view", "showRecordId", "showUuid");
 
     private static final Pattern SLUG_TOKEN = Pattern.compile("^[a-zA-Z0-9_]{1,100}$");
 
@@ -107,12 +111,37 @@ public class PortalNavigationAdminService {
         if (trimmed.endsWith("/") && trimmed.length() > 1) {
             trimmed = trimmed.substring(0, trimmed.length() - 1);
         }
-        return "/home".equals(trimmed) || "/entities".equals(trimmed);
+        return "/home".equals(trimmed) || "/entities".equals(trimmed) || "/audit".equals(trimmed);
     }
 
     /** Internal nav link: entity records URL or a small allow-list of portal routes (e.g. {@code /home}). */
     public static boolean isAllowedInternalSpaRoute(String routePath) {
-        return isAllowedEntityRecordRoute(routePath) || isAllowedSimplePortalRoute(routePath);
+        return isAllowedEntityRecordRoute(routePath)
+                || isAllowedEntityAuditRoute(routePath)
+                || isAllowedSimplePortalRoute(routePath);
+    }
+
+    /**
+     * Allows {@code /entities/{uuid}/audit} with no query string.
+     */
+    public static boolean isAllowedEntityAuditRoute(String routePath) {
+        if (routePath == null) {
+            return false;
+        }
+        String trimmed = routePath.trim();
+        if (trimmed.length() > MAX_ROUTE_PATH_CHARS) {
+            return false;
+        }
+        int q = trimmed.indexOf('?');
+        String pathOnly = q < 0 ? trimmed : trimmed.substring(0, q);
+        String query = q < 0 ? null : trimmed.substring(q + 1);
+        if (pathOnly.endsWith("/") && pathOnly.length() > 1) {
+            pathOnly = pathOnly.substring(0, pathOnly.length() - 1);
+        }
+        if (!ENTITY_AUDIT_PATH.matcher(pathOnly).matches()) {
+            return false;
+        }
+        return query == null || query.isBlank();
     }
 
     /**
@@ -190,12 +219,22 @@ public class PortalNavigationAdminService {
         return switch (key) {
             case "cols", "inline" -> validateSlugCommaList(value);
             case "actions" -> "0".equals(value) || "1".equals(value);
+            case "showRecordId", "showUuid" -> validateBooleanQueryToken(value);
             case "page" -> validatePositiveInt(value, 1, 10_000_000);
             case "pageSize" -> validatePositiveInt(value, 1, 200);
             case "q" -> validateSearchQ(value);
             case "view" -> value != null && UUID_TOKEN.matcher(value.trim()).matches();
             default -> false;
         };
+    }
+
+    /** Matches portal Records URL parsing ({@code 0|1|true|false}). */
+    private static boolean validateBooleanQueryToken(String value) {
+        if (value == null) {
+            return false;
+        }
+        String v = value.trim().toLowerCase(Locale.ROOT);
+        return v.equals("0") || v.equals("1") || v.equals("true") || v.equals("false");
     }
 
     private static boolean validateSlugCommaList(String value) {

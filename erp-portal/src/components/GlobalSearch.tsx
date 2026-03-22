@@ -134,7 +134,7 @@ export function GlobalSearch() {
           <Command shouldFilter={false} loop>
             <Command.Input
               className="global-search-input"
-              placeholder="Search navigation and records…"
+              placeholder="Search navigation, records, activity…"
               value={input}
               onValueChange={setInput}
               aria-autocomplete="list"

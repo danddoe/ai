@@ -222,16 +222,84 @@ export async function fetchOmnibox(
   return (await res.json()) as OmniboxResponse;
 }
 
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return v !== null && typeof v === 'object' && !Array.isArray(v);
+}
+
+/** Formats entity-builder / core-service API error bodies for display (includes validation field errors when present). */
+export function formatApiErrorBody(
+  message: string,
+  code: string | undefined,
+  details: unknown
+): string {
+  let extra = '';
+  if (isRecord(details)) {
+    const fieldErrors = details.fieldErrors;
+    if (Array.isArray(fieldErrors) && fieldErrors.length > 0) {
+      const lines = fieldErrors.map((fe) => {
+        if (!isRecord(fe)) return '';
+        const f = typeof fe.field === 'string' ? fe.field : 'field';
+        const m = typeof fe.message === 'string' ? fe.message : '';
+        return m ? `${f}: ${m}` : f;
+      });
+      extra = lines.filter(Boolean).join('\n');
+    }
+    if (!extra) {
+      const violations = details.violations;
+      if (Array.isArray(violations) && violations.length > 0) {
+        const lines = violations.map((v) => {
+          if (!isRecord(v)) return '';
+          const p = typeof v.path === 'string' ? v.path : 'constraint';
+          const m = typeof v.message === 'string' ? v.message : '';
+          return m ? `${p}: ${m}` : p;
+        });
+        extra = lines.filter(Boolean).join('\n');
+      }
+    }
+  }
+  const head = `${message}${code ? ` (${code})` : ''}`;
+  return extra ? `${head}\n${extra}` : head;
+}
+
 export async function readApiError(res: Response): Promise<string> {
   try {
-    const j = (await res.json()) as { error?: { message?: string; code?: string } };
-    if (j?.error?.message) {
-      return `${j.error.message}${j.error.code ? ` (${j.error.code})` : ''}`;
+    const j = (await res.json()) as Record<string, unknown>;
+    const nested = j.error;
+    if (isRecord(nested) && typeof nested.message === 'string') {
+      const code = typeof nested.code === 'string' ? nested.code : undefined;
+      return formatApiErrorBody(nested.message, code, nested.details);
+    }
+    if (typeof j.message === 'string') {
+      const code = typeof j.code === 'string' ? j.code : undefined;
+      return formatApiErrorBody(j.message, code, j.details);
     }
   } catch {
     /* ignore */
   }
   return `Request failed (${res.status})`;
+}
+
+/** Thrown when {@link apiFetch} returns a non-OK response (optional; not all APIs use this yet). */
+export class ApiHttpError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'ApiHttpError';
+    this.status = status;
+  }
+}
+
+/** Upserts classpath system-entity-catalog manifests into the tenant (requires entity_builder:schema:write). */
+export async function syncSystemEntityCatalog(
+  tenantId: string,
+  manifestKey?: string
+): Promise<{ syncedManifestKeys: string[] }> {
+  const q = manifestKey ? `?manifestKey=${encodeURIComponent(manifestKey)}` : '';
+  const res = await apiFetch(`/v1/tenants/${tenantId}/catalog/sync${q}`, { method: 'POST' });
+  if (!res.ok) throw new ApiHttpError(res.status, await readApiError(res));
+  const data = (await res.json()) as { syncedManifestKeys?: string[] };
+  return { syncedManifestKeys: data.syncedManifestKeys ?? [] };
 }
 
 export async function listEntities(params?: { q?: string; categoryKey?: string }): Promise<EntityDto[]> {
@@ -240,7 +308,7 @@ export async function listEntities(params?: { q?: string; categoryKey?: string }
   if (params?.categoryKey != null && params.categoryKey.trim() !== '') q.set('categoryKey', params.categoryKey.trim());
   const qs = q.toString();
   const res = await apiFetch(`/v1/entities${qs ? `?${qs}` : ''}`);
-  if (!res.ok) throw new Error(await readApiError(res));
+  if (!res.ok) throw new ApiHttpError(res.status, await readApiError(res));
   return (await res.json()) as EntityDto[];
 }
 
@@ -512,6 +580,8 @@ export type AuditEventDto = {
   id: string;
   createdAt: string;
   actorId: string | null;
+  /** Tenant/user display name or email when IAM tables share the DB with entity-builder. */
+  actorLabel?: string | null;
   action: string;
   operation: string | null;
   resourceType: string | null;
@@ -520,6 +590,31 @@ export type AuditEventDto = {
   sourceService: string | null;
   payload: unknown;
 };
+
+/** Text for the audit "Actor" column: API label, else {@code payload.actor}, else actor id. */
+export function auditEventActorDisplay(e: AuditEventDto): string {
+  const fromApi = e.actorLabel?.trim();
+  if (fromApi) return fromApi;
+  const act = payloadActor(e.payload);
+  if (act) {
+    const u = [act.tenantDisplayName, act.displayName, act.email].find(
+      (x) => typeof x === 'string' && x.trim() !== ''
+    );
+    if (u) return u.trim();
+  }
+  return e.actorId ?? '—';
+}
+
+function payloadActor(payload: unknown): {
+  tenantDisplayName?: string;
+  displayName?: string;
+  email?: string;
+} | null {
+  if (!payload || typeof payload !== 'object') return null;
+  const a = (payload as Record<string, unknown>).actor;
+  if (!a || typeof a !== 'object') return null;
+  return a as { tenantDisplayName?: string; displayName?: string; email?: string };
+}
 
 export async function listRecordAuditEvents(
   tenantId: string,

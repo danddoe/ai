@@ -144,4 +144,61 @@ class EntitiesSchemaE2ETest extends AbstractEntityBuilderE2ETest {
         );
         assertThat(getAfterResp.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
+
+    @Test
+    void schema_write_without_read_can_list_and_get_entities() {
+        Assumptions.assumeTrue(jdbcTemplate != null, "E2E skipped: no CockroachDB connection");
+
+        UUID userId = UUID.randomUUID();
+        UUID tenantId = UUID.randomUUID();
+        var headersWriteOnly = authHeaders(userId, tenantId, List.of("entity_builder:schema:write"));
+
+        Map<String, Object> create = new HashMap<>();
+        create.put("name", "WriteOnlyList");
+        create.put("slug", "write_only_list_e2e");
+        create.put("status", "ACTIVE");
+        ResponseEntity<Map> createResp = restTemplate.exchange(
+                baseUrl + "/v1/entities",
+                HttpMethod.POST,
+                new HttpEntity<>(create, headersWriteOnly),
+                Map.class
+        );
+        assertThat(createResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        String entityId = String.valueOf(createResp.getBody().get("id"));
+
+        ResponseEntity<List> listResp = restTemplate.exchange(
+                baseUrl + "/v1/entities",
+                HttpMethod.GET,
+                new HttpEntity<>(null, headersWriteOnly),
+                List.class
+        );
+        assertThat(listResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(listResp.getBody()).isNotEmpty();
+
+        ResponseEntity<Map> getResp = restTemplate.exchange(
+                baseUrl + "/v1/entities/" + entityId,
+                HttpMethod.GET,
+                new HttpEntity<>(null, headersWriteOnly),
+                Map.class
+        );
+        assertThat(getResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(getResp.getBody().get("slug")).isEqualTo("write_only_list_e2e");
+    }
+
+    @Test
+    void portal_navigation_write_can_list_entities() {
+        Assumptions.assumeTrue(jdbcTemplate != null, "E2E skipped: no CockroachDB connection");
+
+        UUID userId = UUID.randomUUID();
+        UUID tenantId = UUID.randomUUID();
+        var headersNav = authHeaders(userId, tenantId, List.of("portal:navigation:write"));
+
+        ResponseEntity<List> listResp = restTemplate.exchange(
+                baseUrl + "/v1/entities",
+                HttpMethod.GET,
+                new HttpEntity<>(null, headersNav),
+                List.class
+        );
+        assertThat(listResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
 }

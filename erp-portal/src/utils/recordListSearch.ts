@@ -1,4 +1,5 @@
 import type { EntityFieldDto, RecordQueryFilterNode } from '../api/schemas';
+import { isCoreDomainField } from './fieldStorage';
 
 /** EAV string-ish fields suitable for a simple top-of-grid text search (OR contains). */
 export function filterableTextFieldSlugs(fields: EntityFieldDto[], restrictToSlugs?: string[] | null): string[] {
@@ -8,8 +9,7 @@ export function filterableTextFieldSlugs(fields: EntityFieldDto[], restrictToSlu
     if (restrict && !restrict.has(f.slug)) continue;
     const ft = f.fieldType.toLowerCase();
     if (ft !== 'string' && ft !== 'text') continue;
-    const storage = (f.config as { storage?: string } | null | undefined)?.storage;
-    if (storage && String(storage).toUpperCase() === 'CORE_DOMAIN') continue;
+    if (isCoreDomainField(f)) continue;
     out.push(f.slug);
   }
   return out.slice(0, 32);

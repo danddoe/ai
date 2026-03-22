@@ -4,23 +4,31 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "countries")
 public class Country {
 
     @Id
-    @Column(name = "country_code", length = 2, nullable = false)
+    @Column(name = "country_code", nullable = false, length = 2)
+    @JdbcTypeCode(SqlTypes.CHAR)
     private String countryCode;
 
     @Column(nullable = false)
     private String name;
 
     @Column(length = 3)
+    @JdbcTypeCode(SqlTypes.CHAR)
     private String alpha3;
 
     @Column(name = "numeric_code", length = 3)
+    @JdbcTypeCode(SqlTypes.CHAR)
     private String numericCode;
+
+    @Column(name = "slug", length = 128)
+    private String slug;
 
     public String getCountryCode() {
         return countryCode;
@@ -52,5 +60,13 @@ public class Country {
 
     public void setNumericCode(String numericCode) {
         this.numericCode = numericCode;
+    }
+
+    public String getSlug() {
+        return slug;
+    }
+
+    public void setSlug(String slug) {
+        this.slug = slug;
     }
 }

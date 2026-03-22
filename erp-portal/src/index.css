@@ -1068,6 +1068,15 @@ a.entity-card-name:hover {
 }
 
 /* —— Record runtime (list + form) —— */
+.records-page-actions {
+  flex-shrink: 0;
+}
+
+.records-page-actions > .btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 .records-table-wrap {
   overflow-x: auto;
   background: #fff;
@@ -1092,6 +1101,60 @@ a.entity-card-name:hover {
   font-weight: 600;
   color: #52525b;
   background: #fafafa;
+}
+
+/* JSON / audit payload viewer — readable “document” panel */
+.json-doc-lead {
+  margin: 0 0 12px;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.json-doc-panel {
+  margin: 0;
+  padding: 18px 20px;
+  overflow: auto;
+  max-height: min(58vh, 520px);
+  text-align: left;
+  font-family: ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.7;
+  color: #1f2328;
+  background: linear-gradient(165deg, #ffffff 0%, #f6f8fa 42%, #eef2f7 100%);
+  border: 1px solid #d1d9e0;
+  border-radius: 12px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    0 1px 2px rgba(31, 35, 40, 0.06);
+}
+
+.json-doc-code {
+  display: block;
+  white-space: pre;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+.json-doc-key {
+  color: #0550ae;
+  font-weight: 600;
+}
+
+.json-doc-str {
+  color: #0a3069;
+}
+
+.json-doc-num {
+  color: #116329;
+}
+
+.json-doc-kw {
+  color: #8250df;
+  font-weight: 500;
+}
+
+.json-doc-punct {
+  color: #656d76;
 }
 
 .records-pager {

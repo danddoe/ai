@@ -1,9 +1,9 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
 
 export function LoginPage() {
-  const { accessToken, login, sessionRestored } = useAuth();
+  const { accessToken, login, sessionRestored, portalBootstrap, portalBootstrapLoaded } = useAuth();
   const location = useLocation();
   const from = (location.state as { from?: string } | null)?.from ?? '/home';
 
@@ -13,7 +13,14 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
-  if (!sessionRestored) {
+  useEffect(() => {
+    if (!portalBootstrapLoaded || !portalBootstrap?.tenantId) {
+      return;
+    }
+    setTenantSlugOrId((prev) => (prev.trim() === '' ? portalBootstrap.tenantId! : prev));
+  }, [portalBootstrapLoaded, portalBootstrap?.tenantId]);
+
+  if (!sessionRestored || !portalBootstrapLoaded) {
     return (
       <div style={{ maxWidth: 360, margin: '4rem auto', padding: '0 1rem', textAlign: 'center' }}>
         <p className="builder-muted">Checking session…</p>

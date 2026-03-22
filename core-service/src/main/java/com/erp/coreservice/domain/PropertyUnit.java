@@ -30,6 +30,9 @@ public class PropertyUnit {
     @Column(name = "status", nullable = false, length = 50)
     private String status;
 
+    @Column(name = "slug", length = 128)
+    private String slug;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -94,6 +97,14 @@ public class PropertyUnit {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public String getSlug() {
+        return slug;
+    }
+
+    public void setSlug(String slug) {
+        this.slug = slug;
     }
 
     public Instant getCreatedAt() {

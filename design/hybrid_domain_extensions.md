@@ -1,6 +1,6 @@
 # Hybrid extensions: optional IAM profile (no IAM schema change)
 
-When you need **tenant-scoped custom attributes on members** but want to **leave IAM tables unchanged**, reuse the same pattern as lending:
+When you need **tenant-scoped custom attributes on members** but want to **leave IAM tables unchanged**, reuse the same pattern as loans-module:
 
 1. **Core** `tenant_users` / `users` rows stay authoritative in IAM (existing APIs).
 2. In entity-builder, define an entity (e.g. `tenant_member_profile`) or reuse a catalog manifest with `CORE_DOMAIN` metadata fields mirroring IAM columns you display (optional) plus `EAV_EXTENSION` fields for custom data.

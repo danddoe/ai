@@ -11,6 +11,8 @@ import {
 } from '../api/schemas';
 import { useAuth } from '../auth/AuthProvider';
 import { blankLayoutV2 } from '../utils/layoutV2';
+import { parseRecordListViewDefinition } from '../utils/recordListViewDefinition';
+import { recordsListPathForViewId } from '../utils/recordsListNav';
 import { TemplatePickerModal } from '../components/builder/TemplatePickerModal';
 import { EntitySettingsModal } from '../components/EntitySettingsModal';
 
@@ -142,22 +144,35 @@ export function EntityLayoutsPage() {
         <strong>Open in records</strong> for a bookmarkable link to a specific view.
       </p>
       <ul className="layout-list">
-        {listViews?.map((v) => (
-          <li key={v.id}>
-            <Link className="layout-card" to={`/entities/${entityId}/list-views/${v.id}`}>
-              <span className="layout-card-name">{v.name}</span>
-              {v.isDefault && <span className="pill pill-on">default</span>}
-              <span className="entity-card-chev" aria-hidden>
-                →
-              </span>
-            </Link>
-            <div style={{ marginTop: 6, paddingLeft: 4 }}>
-              <Link className="link-btn" to={`/entities/${entityId}/records?view=${v.id}`}>
-                Open in records
+        {listViews?.map((v) => {
+          const parsed = parseRecordListViewDefinition(v.definition);
+          const openInRecordsTo = recordsListPathForViewId(
+            entityId,
+            v.id,
+            parsed
+              ? {
+                  showRecordId: parsed.showRecordId === false ? false : undefined,
+                  showRowActions: parsed.showRowActions !== false,
+                }
+              : undefined
+          );
+          return (
+            <li key={v.id}>
+              <Link className="layout-card" to={`/entities/${entityId}/list-views/${v.id}`}>
+                <span className="layout-card-name">{v.name}</span>
+                {v.isDefault && <span className="pill pill-on">default</span>}
+                <span className="entity-card-chev" aria-hidden>
+                  →
+                </span>
               </Link>
-            </div>
-          </li>
-        ))}
+              <div style={{ marginTop: 6, paddingLeft: 4 }}>
+                <Link className="link-btn" to={openInRecordsTo}>
+                  Open in records
+                </Link>
+              </div>
+            </li>
+          );
+        })}
       </ul>
       {listViews && listViews.length === 0 && <p className="builder-muted">No saved list views yet.</p>}
 

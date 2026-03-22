@@ -22,7 +22,7 @@ public class EntityRelationshipsController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAuthority('entity_builder:schema:read')")
+    @PreAuthorize("@entityBuilderSecurity.canReadSchema()")
     public List<RelationshipDtos.RelationshipDto> list() {
         UUID tenantId = SecurityUtil.principal().getTenantId();
         return relationshipService.list(tenantId).stream().map(this::toDto).toList();
@@ -46,7 +46,7 @@ public class EntityRelationshipsController {
     }
 
     @GetMapping("/{relationshipId}")
-    @PreAuthorize("hasAuthority('entity_builder:schema:read')")
+    @PreAuthorize("@entityBuilderSecurity.canReadSchema()")
     public RelationshipDtos.RelationshipDto get(@PathVariable UUID relationshipId) {
         UUID tenantId = SecurityUtil.principal().getTenantId();
         return toDto(relationshipService.get(tenantId, relationshipId));

@@ -1,61 +1,96 @@
 {
-  "version": 1,
-  "manifestKey": "business_unit",
-  "entity": {
-    "name": "Business unit",
-    "slug": "business_unit",
-    "categoryKey": "master_data",
-    "description": "Organizational unit under a company; core-service API; external_id = bu_id.",
-    "defaultDisplayFieldSlug": "bu_name"
+  "version" : 1,
+  "manifestKey" : "business_unit",
+  "entity" : {
+    "name" : "Business unit",
+    "slug" : "business_unit",
+    "categoryKey" : "master_data",
+    "description" : "Organizational unit under a company; core-service API; external_id = bu_id.",
+    "defaultDisplayFieldSlug" : "bu_name"
   },
-  "fields": [
-    {
-      "name": "Company",
-      "slug": "company_id",
-      "sortOrder": 10,
-      "fieldType": "string",
-      "required": true,
-      "pii": false,
-      "config": {
-        "storage": "CORE_DOMAIN",
-        "coreBinding": { "service": "core-service", "column": "company_id" }
-      }
-    },
-    {
-      "name": "Parent BU",
-      "slug": "parent_bu_id",
-      "sortOrder": 20,
-      "fieldType": "string",
-      "required": false,
-      "pii": false,
-      "config": {
-        "storage": "CORE_DOMAIN",
-        "coreBinding": { "service": "core-service", "column": "parent_bu_id" }
-      }
-    },
-    {
-      "name": "BU type",
-      "slug": "bu_type",
-      "sortOrder": 30,
-      "fieldType": "string",
-      "required": true,
-      "pii": false,
-      "config": {
-        "storage": "CORE_DOMAIN",
-        "coreBinding": { "service": "core-service", "column": "bu_type" }
-      }
-    },
-    {
-      "name": "BU name",
-      "slug": "bu_name",
-      "sortOrder": 40,
-      "fieldType": "string",
-      "required": true,
-      "pii": false,
-      "config": {
-        "storage": "CORE_DOMAIN",
-        "coreBinding": { "service": "core-service", "column": "bu_name" }
+  "fields" : [ {
+    "name" : "Company Id",
+    "slug" : "company_id",
+    "sortOrder" : 10,
+    "fieldType" : "string",
+    "required" : true,
+    "pii" : false,
+    "config" : {
+      "storage" : "CORE_DOMAIN",
+      "coreBinding" : {
+        "service" : "core-service",
+        "column" : "company_id"
       }
     }
-  ]
+  }, {
+    "name" : "Parent Bu Id",
+    "slug" : "parent_bu_id",
+    "sortOrder" : 20,
+    "fieldType" : "string",
+    "required" : false,
+    "pii" : false,
+    "config" : {
+      "storage" : "CORE_DOMAIN",
+      "coreBinding" : {
+        "service" : "core-service",
+        "column" : "parent_bu_id"
+      }
+    }
+  }, {
+    "name" : "Bu Type",
+    "slug" : "bu_type",
+    "sortOrder" : 30,
+    "fieldType" : "string",
+    "required" : true,
+    "pii" : false,
+    "config" : {
+      "storage" : "CORE_DOMAIN",
+      "coreBinding" : {
+        "service" : "core-service",
+        "column" : "bu_type"
+      }
+    }
+  }, {
+    "name" : "Bu Name",
+    "slug" : "bu_name",
+    "sortOrder" : 40,
+    "fieldType" : "string",
+    "required" : true,
+    "pii" : false,
+    "config" : {
+      "storage" : "CORE_DOMAIN",
+      "coreBinding" : {
+        "service" : "core-service",
+        "column" : "bu_name"
+      }
+    }
+  }, {
+    "name" : "Slug",
+    "slug" : "slug",
+    "sortOrder" : 50,
+    "fieldType" : "string",
+    "required" : false,
+    "pii" : false,
+    "config" : {
+      "storage" : "CORE_DOMAIN",
+      "coreBinding" : {
+        "service" : "core-service",
+        "column" : "slug"
+      }
+    }
+  }, {
+    "name" : "Alias",
+    "slug" : "alias",
+    "sortOrder" : 60,
+    "fieldType" : "string",
+    "required" : false,
+    "pii" : false,
+    "config" : {
+      "storage" : "CORE_DOMAIN",
+      "coreBinding" : {
+        "service" : "core-service",
+        "column" : "alias"
+      }
+    }
+  } ]
 }

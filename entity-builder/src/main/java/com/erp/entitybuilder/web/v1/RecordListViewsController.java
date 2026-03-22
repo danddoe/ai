@@ -27,7 +27,7 @@ public class RecordListViewsController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAuthority('entity_builder:schema:read')")
+    @PreAuthorize("@entityBuilderSecurity.canReadSchema()")
     public List<RecordListViewDtos.RecordListViewDto> list(@PathVariable UUID entityId) {
         UUID tenantId = SecurityUtil.principal().getTenantId();
         return recordListViewService.list(tenantId, entityId).stream().map(this::toDto).toList();
@@ -51,7 +51,7 @@ public class RecordListViewsController {
     }
 
     @GetMapping("/{viewId}")
-    @PreAuthorize("hasAuthority('entity_builder:schema:read')")
+    @PreAuthorize("@entityBuilderSecurity.canReadSchema()")
     public RecordListViewDtos.RecordListViewDto get(@PathVariable UUID entityId, @PathVariable UUID viewId) {
         UUID tenantId = SecurityUtil.principal().getTenantId();
         RecordListView v = recordListViewService.getForEntity(tenantId, entityId, viewId);

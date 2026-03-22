@@ -2,6 +2,33 @@ _format_version: "3.0"
 
 # Entity-builder routes first (more specific) so they match before IAM /v1 catch-all
 services:
+  - name: core-service
+    url: http://host.docker.internal:8084
+    routes:
+      - name: core-portal-bootstrap
+        paths:
+          - /v1/portal
+          - ~/v1/portal/.*
+        regex_priority: 90
+      - name: core-master-data
+        paths:
+          - /v1/countries
+          - ~/v1/tenants/[^/]+/companies
+          - ~/v1/tenants/[^/]+/companies/.*
+          - ~/v1/tenants/[^/]+/portal-host-bindings
+          - ~/v1/tenants/[^/]+/portal-host-bindings/.*
+          - ~/v1/tenants/[^/]+/business-units
+          - ~/v1/tenants/[^/]+/business-units/.*
+          - ~/v1/tenants/[^/]+/regions
+          - ~/v1/tenants/[^/]+/regions/.*
+          - ~/v1/tenants/[^/]+/locations
+          - ~/v1/tenants/[^/]+/locations/.*
+          - ~/v1/tenants/[^/]+/properties
+          - ~/v1/tenants/[^/]+/properties/.*
+          - ~/v1/tenants/[^/]+/property-units
+          - ~/v1/tenants/[^/]+/property-units/.*
+        regex_priority: 90
+
   - name: entity-builder
     url: http://host.docker.internal:8081
     routes:

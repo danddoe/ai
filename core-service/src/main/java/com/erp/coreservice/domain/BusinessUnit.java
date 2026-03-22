@@ -29,6 +29,12 @@ public class BusinessUnit {
     @Column(name = "bu_name", nullable = false)
     private String buName;
 
+    @Column(name = "slug", length = 128)
+    private String slug;
+
+    @Column(name = "alias", length = 255)
+    private String alias;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -93,6 +99,22 @@ public class BusinessUnit {
 
     public void setBuName(String buName) {
         this.buName = buName;
+    }
+
+    public String getSlug() {
+        return slug;
+    }
+
+    public void setSlug(String slug) {
+        this.slug = slug;
+    }
+
+    public String getAlias() {
+        return alias;
+    }
+
+    public void setAlias(String alias) {
+        this.alias = alias;
     }
 
     public Instant getCreatedAt() {

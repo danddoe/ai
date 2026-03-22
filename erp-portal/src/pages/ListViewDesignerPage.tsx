@@ -20,6 +20,7 @@ import { clearPortalNavigationCache, usePortalNavigation } from '../hooks/usePor
 import {
   buildRecordListViewDefinitionV1,
   parseRecordListViewDefinition,
+  RECORD_LIST_ROW_ID_SLUG,
   type RecordListColumnDefinition,
 } from '../utils/recordListViewDefinition';
 import {
@@ -69,6 +70,8 @@ export function ListViewDesignerPage() {
   const [columns, setColumns] = useState<RecordListColumnDefinition[]>([]);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [showRowActions, setShowRowActions] = useState(true);
+  /** When true, Records shows the leading UUID column for this view. */
+  const [showRecordId, setShowRecordId] = useState(true);
   /** When true, this view is the entity default for /records without ?view=. */
   const [viewIsDefault, setViewIsDefault] = useState(false);
 
@@ -77,11 +80,13 @@ export function ListViewDesignerPage() {
 
   const listState = useMemo((): ListViewQueryState => {
     if (workingViewId) {
+      // Sidebar URL uses showRecordId=0 only when Id is hidden; otherwise the saved definition applies.
       return {
         viewId: workingViewId,
         cols: [],
         inlineSlugs: [],
-        showRowActions: true,
+        showRowActions,
+        showRecordId: showRecordId ? undefined : false,
       };
     }
     const ordered = normalizeOrders(columns);
@@ -91,7 +96,7 @@ export function ListViewDesignerPage() {
       inlineSlugs: ordered.filter((c) => c.inlineEditable).map((c) => c.fieldSlug),
       showRowActions,
     };
-  }, [workingViewId, columns, showRowActions]);
+  }, [workingViewId, columns, showRowActions, showRecordId]);
 
   const recordsPreviewPath = useMemo(() => recordsListPath(entityId, listState), [entityId, listState]);
 
@@ -114,6 +119,7 @@ export function ListViewDesignerPage() {
         setColumns([]);
         setSelectedIdx(null);
         setShowRowActions(true);
+        setShowRecordId(true);
         setViewIsDefault(false);
         const fromQs = (location.state as { fromRecordsQuery?: string } | null)?.fromRecordsQuery;
         if (fromQs) {
@@ -129,6 +135,9 @@ export function ListViewDesignerPage() {
                 setViewName(dto.name);
                 setColumns(normalizeOrders(def.columns));
                 setShowRowActions(def.showRowActions !== false);
+                setShowRecordId(
+                  parsed.showRecordId !== undefined ? parsed.showRecordId : def.showRecordId !== false
+                );
                 setViewIsDefault(dto.isDefault);
                 navigate(`/entities/${entityId}/list-views/${parsed.viewId}`, { replace: true });
               }
@@ -149,6 +158,7 @@ export function ListViewDesignerPage() {
           setViewName(dto.name);
           setColumns(normalizeOrders(def.columns));
           setShowRowActions(def.showRowActions !== false);
+          setShowRecordId(def.showRecordId !== false);
           setViewIsDefault(dto.isDefault);
         }
       }
@@ -177,6 +187,7 @@ export function ListViewDesignerPage() {
 
   function addColumn(slug: string) {
     if (!canSchemaWrite) return;
+    if (slug.trim().toLowerCase() === RECORD_LIST_ROW_ID_SLUG) return;
     if (columns.some((c) => c.fieldSlug === slug)) return;
     setColumns((prev) =>
       normalizeOrders([
@@ -239,7 +250,7 @@ export function ListViewDesignerPage() {
     setSaving(true);
     setError(null);
     try {
-      const def = buildRecordListViewDefinitionV1(normalizeOrders(columns), showRowActions);
+      const def = buildRecordListViewDefinitionV1(normalizeOrders(columns), showRowActions, showRecordId);
       const body = {
         name,
         definition: def as unknown as Record<string, unknown>,
@@ -310,6 +321,9 @@ export function ListViewDesignerPage() {
             setViewName(dto.name);
             setColumns(normalizeOrders(def.columns));
             setShowRowActions(def.showRowActions !== false);
+            setShowRecordId(
+              parsed.showRecordId !== undefined ? parsed.showRecordId : def.showRecordId !== false
+            );
             setViewIsDefault(dto.isDefault);
             navigate(`/entities/${entityId}/list-views/${vid}`, { replace: true });
           }
@@ -321,6 +335,7 @@ export function ListViewDesignerPage() {
       setWorkingViewId(null);
       setViewName('');
       setViewIsDefault(false);
+      setShowRecordId(true);
       setColumns(normalizeOrders(legacyColumnsFromQuery(parsed.cols, parsed.inlineSlugs)));
     }
   }
@@ -415,6 +430,15 @@ export function ListViewDesignerPage() {
           />
           <span>Show row actions</span>
         </label>
+        <label className="field-label row" style={{ margin: 0 }}>
+          <input
+            type="checkbox"
+            checked={showRecordId}
+            onChange={(e) => setShowRecordId(e.target.checked)}
+            disabled={!canSchemaWrite}
+          />
+          <span>Show record ID column</span>
+        </label>
         <label className="field-label row" style={{ margin: 0 }} title="Used when Records has no ?view= in the URL">
           <input
             type="checkbox"
@@ -487,6 +511,10 @@ export function ListViewDesignerPage() {
               <div className="builder-region-head">
                 <span className="builder-role">Columns</span>
               </div>
+              <p className="builder-muted" style={{ fontSize: '0.75rem', margin: '0 0 8px' }}>
+                Record UUID can be shown or hidden with <strong>Show record ID column</strong> above (not a data-dictionary
+                field).
+              </p>
               {columns.length === 0 && <p className="builder-muted">Add fields from the data dictionary.</p>}
               <ul className="builder-items">
                 {columns.map((c, idx) => (
@@ -551,6 +579,7 @@ export function ListViewDesignerPage() {
               <table className="records-table" style={{ margin: 0, minWidth: 200 }}>
                 <thead>
                   <tr>
+                    {showRecordId && <th>Id</th>}
                     {columns.map((c) => (
                       <th key={c.fieldSlug}>
                         {c.label?.trim() || fields.find((f) => f.slug === c.fieldSlug)?.name || c.fieldSlug}
@@ -560,6 +589,11 @@ export function ListViewDesignerPage() {
                 </thead>
                 <tbody>
                   <tr>
+                    {showRecordId && (
+                      <td className="builder-muted">
+                        <code>…</code>
+                      </td>
+                    )}
                     {columns.map((c) => (
                       <td key={c.fieldSlug} className="builder-muted">
                         …

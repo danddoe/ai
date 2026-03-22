@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { listEntities, type EntityDto } from '../api/schemas';
+import { listEntities, syncSystemEntityCatalog, type EntityDto } from '../api/schemas';
 import { useAuth } from '../auth/AuthProvider';
 import { CreateEntityModal } from '../components/CreateEntityModal';
 
@@ -8,13 +8,16 @@ const SEARCH_DEBOUNCE_MS = 300;
 
 export function EntitiesPage() {
   const navigate = useNavigate();
-  const { canSchemaWrite, canCreatePortalNavItem } = useAuth();
+  const { canSchemaWrite, canCreatePortalNavItem, canRecordsRead, tenantId } = useAuth();
   const [entities, setEntities] = useState<EntityDto[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [searchInput, setSearchInput] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [listLoading, setListLoading] = useState(true);
+  const [syncBusy, setSyncBusy] = useState(false);
+  const [syncSuccess, setSyncSuccess] = useState<string | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   useEffect(() => {
     const t = window.setTimeout(() => setDebouncedSearch(searchInput.trim()), SEARCH_DEBOUNCE_MS);
@@ -38,6 +41,26 @@ export function EntitiesPage() {
     void load();
   }, [load]);
 
+  async function onSyncCatalog() {
+    if (!tenantId.trim() || !canSchemaWrite) return;
+    setSyncSuccess(null);
+    setSyncError(null);
+    setSyncBusy(true);
+    try {
+      const { syncedManifestKeys } = await syncSystemEntityCatalog(tenantId);
+      setSyncSuccess(
+        syncedManifestKeys.length
+          ? `Synced: ${syncedManifestKeys.join(', ')}.`
+          : 'Catalog sync finished (no manifest keys returned).'
+      );
+      await load();
+    } catch (e) {
+      setSyncError(e instanceof Error ? e.message : 'Catalog sync failed');
+    } finally {
+      setSyncBusy(false);
+    }
+  }
+
   return (
     <div className="page-shell">
       <header className="page-header">
@@ -45,12 +68,35 @@ export function EntitiesPage() {
           <h1 className="page-title">Entities</h1>
           <p className="page-sub">Open form layouts for an entity.</p>
         </div>
-        {canCreatePortalNavItem && (
-          <Link className="btn btn-secondary" to="/ui/create">
-            Create UI
-          </Link>
-        )}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+          {canSchemaWrite && tenantId.trim() && (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={syncBusy}
+              onClick={() => void onSyncCatalog()}
+              title="Import bundled system-entity-catalog manifests for this tenant"
+            >
+              {syncBusy ? 'Syncing catalog…' : 'Sync system catalog'}
+            </button>
+          )}
+          {canCreatePortalNavItem && (
+            <Link className="btn btn-secondary" to="/ui/create">
+              Create UI
+            </Link>
+          )}
+        </div>
       </header>
+      {syncSuccess && (
+        <p className="builder-muted" role="status">
+          {syncSuccess}
+        </p>
+      )}
+      {syncError && (
+        <p className="text-error" role="alert">
+          {syncError}
+        </p>
+      )}
       {loadError && (
         <p role="alert" className="text-error">
           {loadError}
@@ -85,6 +131,11 @@ export function EntitiesPage() {
               <Link className="btn btn-primary btn-sm" to={`/entities/${e.id}/layouts`}>
                 Layouts
               </Link>
+              {canRecordsRead && (
+                <Link className="btn btn-secondary btn-sm" to={`/entities/${e.id}/audit`}>
+                  Activity
+                </Link>
+              )}
             </div>
           </li>
         ))}

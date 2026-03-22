@@ -183,7 +183,7 @@ public class SystemCatalogSyncService {
                     ef.getId(),
                     Optional.of(fieldName),
                     Optional.empty(),
-                    Optional.empty(),
+                    Optional.of(fieldType),
                     Optional.of(required),
                     Optional.of(pii),
                     Optional.ofNullable(configJson),

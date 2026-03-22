@@ -11,12 +11,18 @@ import {
 } from '../api/hybridLoan';
 
 export function LoanHybridDemoPage() {
-  const { tenantId: tenantFromAuth } = useAuth();
-  const [tenantId, setTenantId] = useState(tenantFromAuth);
+  const { tenantId: tenantFromAuth, portalBootstrap, portalBootstrapLoaded } = useAuth();
+  const [tenantId, setTenantId] = useState('');
 
   useEffect(() => {
-    if (tenantFromAuth) setTenantId(tenantFromAuth);
-  }, [tenantFromAuth]);
+    if (tenantFromAuth) {
+      setTenantId(tenantFromAuth);
+      return;
+    }
+    if (portalBootstrapLoaded && portalBootstrap?.tenantId) {
+      setTenantId(portalBootstrap.tenantId);
+    }
+  }, [tenantFromAuth, portalBootstrapLoaded, portalBootstrap?.tenantId]);
   const [status, setStatus] = useState('DRAFT');
   const [amount, setAmount] = useState('10000');
   const [productCode, setProductCode] = useState('');
@@ -143,7 +149,7 @@ export function LoanHybridDemoPage() {
         </p>
       )}
 
-      {merged && (
+      {merged != null ? (
         <pre
           style={{
             marginTop: 24,
@@ -156,7 +162,7 @@ export function LoanHybridDemoPage() {
         >
           {JSON.stringify(merged, null, 2)}
         </pre>
-      )}
+      ) : null}
     </div>
   );
 }

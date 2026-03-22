@@ -29,6 +29,9 @@ public class Property {
     @Column(name = "property_type", nullable = false, length = 100)
     private String propertyType;
 
+    @Column(name = "slug", length = 128)
+    private String slug;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -93,6 +96,14 @@ public class Property {
 
     public void setPropertyType(String propertyType) {
         this.propertyType = propertyType;
+    }
+
+    public String getSlug() {
+        return slug;
+    }
+
+    public void setSlug(String slug) {
+        this.slug = slug;
     }
 
     public Instant getCreatedAt() {

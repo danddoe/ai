@@ -26,6 +26,9 @@ public class Region {
     @Column(name = "region_name", nullable = false)
     private String regionName;
 
+    @Column(name = "slug", length = 128)
+    private String slug;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -82,6 +85,14 @@ public class Region {
 
     public void setRegionName(String regionName) {
         this.regionName = regionName;
+    }
+
+    public String getSlug() {
+        return slug;
+    }
+
+    public void setSlug(String slug) {
+        this.slug = slug;
     }
 
     public Instant getCreatedAt() {

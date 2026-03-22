@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "defaults": {
+    "service": "core-service",
+    "categoryKey": "master_data"
+  },
+  "entities": [
+    {
+      "domainClass": "com.erp.coreservice.domain.Company",
+      "manifestKey": "company",
+      "entitySlug": "company",
+      "entityName": "Company",
+      "description": "Legal entity; core columns in core-service; tenant extensions in entity_record_values (external_id = company_id).",
+      "defaultDisplayFieldSlug": "company_name",
+      "includeTenantId": false,
+      "includeAuditTimestamps": false,
+      "excludeColumns": [],
+      "extraFields": [
+        {
+          "name": "Extension notes",
+          "slug": "extension_notes",
+          "sortOrder": 100,
+          "fieldType": "string",
+          "required": false,
+          "pii": false,
+          "config": { "storage": "EAV_EXTENSION" }
+        }
+      ]
+    },
+    {
+      "domainClass": "com.erp.coreservice.domain.BusinessUnit",
+      "manifestKey": "business_unit",
+      "entitySlug": "business_unit",
+      "entityName": "Business unit",
+      "description": "Organizational unit under a company; core-service API; external_id = bu_id.",
+      "defaultDisplayFieldSlug": "bu_name",
+      "includeTenantId": false,
+      "includeAuditTimestamps": false,
+      "excludeColumns": []
+    },
+    {
+      "domainClass": "com.erp.coreservice.domain.PortalHostBinding",
+      "manifestKey": "portal_host_binding",
+      "entitySlug": "portal_host_binding",
+      "entityName": "Portal host binding",
+      "categoryKey": "security",
+      "description": "Hostname binding for portal bootstrap; core-service API; external_id = binding_id.",
+      "defaultDisplayFieldSlug": "hostname",
+      "includeTenantId": false,
+      "includeAuditTimestamps": false,
+      "excludeColumns": [],
+      "service": "core-service"
+    }
+  ]
+}

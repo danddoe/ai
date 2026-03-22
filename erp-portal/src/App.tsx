@@ -12,6 +12,8 @@ import { FormLayoutPreviewPage } from './pages/FormLayoutPreviewPage';
 import { LoanHybridDemoPage } from './pages/LoanHybridDemoPage';
 import { EntityRecordsListPage } from './pages/EntityRecordsListPage';
 import { RecordFormPage } from './pages/RecordFormPage';
+import { AuditHubPage } from './pages/AuditHubPage';
+import { EntityAuditPage } from './pages/EntityAuditPage';
 import { CreateUiWizardPage } from './pages/CreateUiWizardPage';
 import { PortalNavigationItemsPage } from './pages/PortalNavigationItemsPage';
 
@@ -45,6 +47,7 @@ export function App() {
       >
         <Route index element={<Navigate to="home" replace />} />
         <Route path="home" element={<HomePage />} />
+        <Route path="audit" element={<AuditHubPage />} />
         <Route path="ui/create" element={<CreateUiWizardPage />} />
         <Route path="settings/navigation-items" element={<PortalNavigationItemsPage />} />
         <Route path="entities" element={<EntitiesPage />} />
@@ -53,9 +56,10 @@ export function App() {
         <Route path="entities/:entityId/layouts/:layoutId" element={<FormBuilderPage />} />
         <Route path="entities/:entityId/list-views/:viewId" element={<ListViewDesignerPage />} />
         {/* :recordId is "new" for create — do not use a separate /records/new path (no :recordId param breaks RecordFormPage). */}
+        <Route path="entities/:entityId/audit" element={<EntityAuditPage />} />
         <Route path="entities/:entityId/records/:recordId" element={<RecordFormPage />} />
         <Route path="entities/:entityId/records" element={<EntityRecordsListPage />} />
-        <Route path="lending/hybrid-demo" element={<LoanHybridDemoPage />} />
+        <Route path="loans-module/hybrid-demo" element={<LoanHybridDemoPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

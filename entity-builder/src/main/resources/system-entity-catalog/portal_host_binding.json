@@ -1,0 +1,96 @@
+{
+  "version" : 1,
+  "manifestKey" : "portal_host_binding",
+  "entity" : {
+    "name" : "Portal host binding",
+    "slug" : "portal_host_binding",
+    "categoryKey" : "security",
+    "description" : "Hostname binding for portal bootstrap; core-service API; external_id = binding_id.",
+    "defaultDisplayFieldSlug" : "hostname"
+  },
+  "fields" : [ {
+    "name" : "Hostname",
+    "slug" : "hostname",
+    "sortOrder" : 10,
+    "fieldType" : "string",
+    "required" : true,
+    "pii" : false,
+    "config" : {
+      "storage" : "CORE_DOMAIN",
+      "coreBinding" : {
+        "service" : "core-service",
+        "column" : "hostname"
+      }
+    }
+  }, {
+    "name" : "Slug",
+    "slug" : "slug",
+    "sortOrder" : 20,
+    "fieldType" : "string",
+    "required" : false,
+    "pii" : false,
+    "config" : {
+      "storage" : "CORE_DOMAIN",
+      "coreBinding" : {
+        "service" : "core-service",
+        "column" : "slug"
+      }
+    }
+  }, {
+    "name" : "Scope",
+    "slug" : "scope",
+    "sortOrder" : 30,
+    "fieldType" : "string",
+    "required" : true,
+    "pii" : false,
+    "config" : {
+      "storage" : "CORE_DOMAIN",
+      "coreBinding" : {
+        "service" : "core-service",
+        "column" : "scope"
+      }
+    }
+  }, {
+    "name" : "Company Id",
+    "slug" : "company_id",
+    "sortOrder" : 40,
+    "fieldType" : "string",
+    "required" : false,
+    "pii" : false,
+    "config" : {
+      "storage" : "CORE_DOMAIN",
+      "coreBinding" : {
+        "service" : "core-service",
+        "column" : "company_id"
+      }
+    }
+  }, {
+    "name" : "Bu Id",
+    "slug" : "bu_id",
+    "sortOrder" : 50,
+    "fieldType" : "string",
+    "required" : false,
+    "pii" : false,
+    "config" : {
+      "storage" : "CORE_DOMAIN",
+      "coreBinding" : {
+        "service" : "core-service",
+        "column" : "bu_id"
+      }
+    }
+  }, {
+    "name" : "Verified At",
+    "slug" : "verified_at",
+    "sortOrder" : 60,
+    "fieldType" : "date",
+    "required" : false,
+    "pii" : false,
+    "config" : {
+      "storage" : "CORE_DOMAIN",
+      "coreBinding" : {
+        "service" : "core-service",
+        "column" : "verified_at"
+      }
+    }
+  } ]
+}

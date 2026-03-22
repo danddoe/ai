@@ -10,6 +10,9 @@ import com.erp.entitybuilder.web.v1.dto.PageResponse;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.HttpStatus;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Service;
@@ -20,12 +23,18 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
 public class EntityRecordAuditService {
 
+    private static final Logger log = LoggerFactory.getLogger(EntityRecordAuditService.class);
     private static final String SOURCE_ENTITY_BUILDER = "entity-builder";
 
     private final JdbcTemplate jdbcTemplate;
@@ -131,6 +140,7 @@ public class EntityRecordAuditService {
                 + " ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?";
 
         List<AuditEventDtos.AuditEventDto> items = jdbcTemplate.query(sql, auditRowMapper(), dataArgs.toArray());
+        enrichActorLabels(tenantId, items);
         return new PageResponse<>(items, p, size, t);
     }
 
@@ -182,7 +192,129 @@ public class EntityRecordAuditService {
                 + " ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?";
 
         List<AuditEventDtos.AuditEventDto> items = jdbcTemplate.query(sql, auditRowMapper(), dataArgs.toArray());
+        enrichActorLabels(tenantId, items);
         return new PageResponse<>(items, p, size, t);
+    }
+
+    /**
+     * Prefer {@code payload.actor} (written with each event). Otherwise join IAM {@code users} /
+     * {@code tenant_users} when they share the database with {@code audit_log}.
+     */
+    private void enrichActorLabels(UUID tenantId, List<AuditEventDtos.AuditEventDto> items) {
+        if (items == null || items.isEmpty()) {
+            return;
+        }
+        for (AuditEventDtos.AuditEventDto e : items) {
+            String fromPayload = actorLabelFromPayload(e.getPayload());
+            if (fromPayload != null) {
+                e.setActorLabel(fromPayload);
+            }
+        }
+        Set<UUID> actorIds = new HashSet<>();
+        for (AuditEventDtos.AuditEventDto e : items) {
+            if (e.getActorId() != null && (e.getActorLabel() == null || e.getActorLabel().isBlank())) {
+                actorIds.add(e.getActorId());
+            }
+        }
+        if (actorIds.isEmpty()) {
+            return;
+        }
+        List<UUID> idList = new ArrayList<>(actorIds);
+        String placeholders = String.join(",", Collections.nCopies(idList.size(), "?"));
+        String sql = """
+                SELECT u.id AS user_id, u.email, u.display_name AS user_display_name,
+                       tu.display_name AS tenant_display_name
+                FROM users u
+                LEFT JOIN tenant_users tu ON tu.user_id = u.id AND tu.tenant_id = ?
+                WHERE u.id IN (""" + placeholders + ")";
+        List<Object> args = new ArrayList<>();
+        args.add(tenantId);
+        args.addAll(idList);
+        Map<UUID, String> labels;
+        try {
+            labels = jdbcTemplate.query(
+                    sql,
+                    rs -> {
+                        Map<UUID, String> m = new HashMap<>();
+                        while (rs.next()) {
+                            UUID id = rs.getObject("user_id", UUID.class);
+                            String tenantDn = rs.getString("tenant_display_name");
+                            String userDn = rs.getString("user_display_name");
+                            String email = rs.getString("email");
+                            String label = firstNonBlank(tenantDn, userDn, email);
+                            if (id != null && label != null) {
+                                m.put(id, label);
+                            }
+                        }
+                        return m;
+                    },
+                    args.toArray());
+        } catch (DataAccessException ex) {
+            if (isMissingIamUsersRelation(ex)) {
+                log.trace("Skipping audit actor JDBC enrichment (IAM users not in this database): {}", ex.getMessage());
+                return;
+            }
+            throw ex;
+        }
+        for (AuditEventDtos.AuditEventDto e : items) {
+            if (e.getActorId() != null && (e.getActorLabel() == null || e.getActorLabel().isBlank())) {
+                String label = labels.get(e.getActorId());
+                if (label != null) {
+                    e.setActorLabel(label);
+                }
+            }
+        }
+    }
+
+    private static String actorLabelFromPayload(JsonNode payload) {
+        if (payload == null || payload.isNull() || !payload.has("actor")) {
+            return null;
+        }
+        JsonNode actor = payload.get("actor");
+        if (actor == null || !actor.isObject()) {
+            return null;
+        }
+        return firstNonBlank(
+                textNode(actor, "tenantDisplayName"),
+                textNode(actor, "displayName"),
+                textNode(actor, "email")
+        );
+    }
+
+    private static String textNode(JsonNode parent, String field) {
+        JsonNode n = parent.get(field);
+        if (n == null || !n.isTextual()) {
+            return null;
+        }
+        String t = n.asText();
+        return t == null || t.isBlank() ? null : t.trim();
+    }
+
+    private static String firstNonBlank(String... values) {
+        if (values == null) {
+            return null;
+        }
+        for (String v : values) {
+            if (v != null && !v.isBlank()) {
+                return v.trim();
+            }
+        }
+        return null;
+    }
+
+    private static boolean isMissingIamUsersRelation(DataAccessException ex) {
+        for (Throwable t = ex; t != null; t = t.getCause()) {
+            if (t instanceof SQLException se) {
+                if ("42P01".equals(se.getSQLState())) {
+                    return true;
+                }
+                String msg = se.getMessage();
+                if (msg != null && msg.contains("does not exist") && msg.contains("users")) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private static void appendTimeAndAction(

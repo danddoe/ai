@@ -1,3 +1,9 @@
+gateway:
+  portal-host:
+    core-service-url: ${CORE_SERVICE_URL:http://localhost:8084}
+    cache-ttl-seconds: ${PORTAL_HOST_CACHE_TTL_SECONDS:60}
+    trust-secret: ${GATEWAY_TRUST_SECRET:}
+
 spring:
   application:
     name: api-gateway
@@ -33,7 +39,7 @@ spring:
         - id: core-service-master-data
           uri: ${CORE_SERVICE_URL:http://localhost:8084}
           predicates:
-            - Path=/v1/countries,/v1/countries/**,/v1/tenants/*/companies,/v1/tenants/*/companies/**,/v1/tenants/*/business-units,/v1/tenants/*/business-units/**,/v1/tenants/*/regions,/v1/tenants/*/regions/**,/v1/tenants/*/locations,/v1/tenants/*/locations/**,/v1/tenants/*/properties,/v1/tenants/*/properties/**,/v1/tenants/*/property-units,/v1/tenants/*/property-units/**
+            - Path=/v1/portal,/v1/portal/**,/v1/countries,/v1/countries/**,/v1/tenants/*/companies,/v1/tenants/*/companies/**,/v1/tenants/*/portal-host-bindings,/v1/tenants/*/portal-host-bindings/**,/v1/tenants/*/business-units,/v1/tenants/*/business-units/**,/v1/tenants/*/regions,/v1/tenants/*/regions/**,/v1/tenants/*/locations,/v1/tenants/*/locations/**,/v1/tenants/*/properties,/v1/tenants/*/properties/**,/v1/tenants/*/property-units,/v1/tenants/*/property-units/**
         - id: loans-module-tenant-loans
           uri: ${LOANS_MODULE_URL:http://localhost:8083}
           predicates:

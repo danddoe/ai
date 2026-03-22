@@ -14,6 +14,8 @@ public class AuditEventDtos {
         private UUID id;
         private Instant createdAt;
         private UUID actorId;
+        /** Resolved from IAM {@code users} / {@code tenant_users} when present in the same database; otherwise null. */
+        private String actorLabel;
         private String action;
         private String operation;
         private String resourceType;
@@ -44,6 +46,14 @@ public class AuditEventDtos {
 
         public void setActorId(UUID actorId) {
             this.actorId = actorId;
+        }
+
+        public String getActorLabel() {
+            return actorLabel;
+        }
+
+        public void setActorLabel(String actorLabel) {
+            this.actorLabel = actorLabel;
         }
 
         public String getAction() {

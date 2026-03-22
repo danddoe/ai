@@ -14,6 +14,7 @@ import {
 } from '../api/client';
 import { clearPortalNavigationCache } from '../hooks/usePortalNavigation';
 import { clearLegacyStoredTokens } from './tokenStorage';
+import { fetchPortalBootstrap, type PortalBootstrapPayload } from '../api/portalBootstrap';
 import {
   canCreatePortalNavItem,
   canManageGlobalNavigation,
@@ -46,6 +47,12 @@ type AuthContextValue = {
   canCreatePortalNavItem: boolean;
   /** Global nav admin (IAM). */
   canManageGlobalNavigation: boolean;
+  /**
+   * Resolved from `GET /v1/portal/bootstrap` (custom hostname / CNAME). Empty strings when unknown.
+   * Approach A: UX defaults only; authorization remains JWT tenant + permissions.
+   */
+  portalBootstrap: PortalBootstrapPayload | null;
+  portalBootstrapLoaded: boolean;
   login: (tenantSlugOrId: string, email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
 };
@@ -55,9 +62,35 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [accessToken, setAccessTokenState] = useState<string | null>(null);
   const [sessionRestored, setSessionRestored] = useState(false);
+  const [portalBootstrap, setPortalBootstrap] = useState<PortalBootstrapPayload | null>(null);
+  const [portalBootstrapLoaded, setPortalBootstrapLoaded] = useState(false);
 
   useEffect(() => {
     clearLegacyStoredTokens();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const override = import.meta.env.VITE_PORTAL_HOSTNAME_OVERRIDE as string | undefined;
+    (async () => {
+      try {
+        const data = await fetchPortalBootstrap(override?.trim() || undefined);
+        if (!cancelled) {
+          setPortalBootstrap(data);
+        }
+      } catch {
+        if (!cancelled) {
+          setPortalBootstrap(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setPortalBootstrapLoaded(true);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -156,6 +189,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       canPiiRead: piiRead,
       canCreatePortalNavItem: portalNavCreate,
       canManageGlobalNavigation: globalNavAdmin,
+      portalBootstrap,
+      portalBootstrapLoaded,
       login,
       logout,
     }),
@@ -171,6 +206,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       piiRead,
       portalNavCreate,
       globalNavAdmin,
+      portalBootstrap,
+      portalBootstrapLoaded,
       login,
       logout,
     ]

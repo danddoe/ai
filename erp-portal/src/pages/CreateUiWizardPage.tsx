@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
+  ApiHttpError,
   createNavigationItem,
   createRecordListView,
   listEntities,
@@ -78,6 +79,7 @@ export function CreateUiWizardPage() {
   const [step, setStep] = useState(1);
   const [template, setTemplate] = useState<UiTemplateId>('list_and_form');
   const [entities, setEntities] = useState<EntityDto[] | null>(null);
+  const [entitiesLoading, setEntitiesLoading] = useState(false);
   const [entitySearchInput, setEntitySearchInput] = useState('');
   const [entitySearchDebounced, setEntitySearchDebounced] = useState('');
   const [entityId, setEntityId] = useState<string | null>(null);
@@ -123,12 +125,20 @@ export function CreateUiWizardPage() {
   }, [entitySearchInput]);
 
   const loadEntities = useCallback(async () => {
+    setEntitiesLoading(true);
     try {
       const q = entitySearchDebounced;
       setEntities(await listEntities(q ? { q } : undefined));
+      setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load entities');
+      let msg = e instanceof Error ? e.message : 'Failed to load entities';
+      if (e instanceof ApiHttpError && e.status === 403) {
+        msg = `${msg} You need entity_builder:schema:read or entity_builder:schema:write (or portal:navigation:write for listing only).`;
+      }
+      setError(msg);
       setEntities([]);
+    } finally {
+      setEntitiesLoading(false);
     }
   }, [entitySearchDebounced]);
 
@@ -402,26 +412,35 @@ export function CreateUiWizardPage() {
             onChange={(e) => setEntitySearchInput(e.target.value)}
             style={{ maxWidth: 420, marginBottom: 12 }}
           />
+          {entitiesLoading && <p className="builder-muted">Loading entities…</p>}
           <ul className="entity-list" style={{ maxHeight: 320, overflowY: 'auto' }}>
-            {entities?.map((e) => (
-              <li key={e.id}>
-                <label className="entity-card" style={{ cursor: 'pointer' }}>
-                  <input
-                    type="radio"
-                    name="ent"
-                    checked={entityId === e.id}
-                    onChange={() => {
-                      setEntityId(e.id);
-                      setPickedEntity(e);
-                    }}
-                    style={{ marginRight: 8 }}
-                  />
-                  <span className="entity-card-name">{e.name}</span>
-                  <code className="entity-card-slug">{e.slug}</code>
-                </label>
-              </li>
-            ))}
+            {!entitiesLoading &&
+              entities?.map((e) => (
+                <li key={e.id}>
+                  <label className="entity-card" style={{ cursor: 'pointer' }}>
+                    <input
+                      type="radio"
+                      name="ent"
+                      checked={entityId === e.id}
+                      onChange={() => {
+                        setEntityId(e.id);
+                        setPickedEntity(e);
+                      }}
+                      style={{ marginRight: 8 }}
+                    />
+                    <span className="entity-card-name">{e.name}</span>
+                    <code className="entity-card-slug">{e.slug}</code>
+                  </label>
+                </li>
+              ))}
           </ul>
+          {!entitiesLoading && entities && entities.length === 0 && !entitySearchDebounced && (
+            <p className="builder-muted" style={{ marginTop: 8, maxWidth: 520 }}>
+              No entities for this tenant. Bundled definitions (system catalog) are not loaded until someone runs{' '}
+              <strong>Sync system catalog</strong> on the{' '}
+              <Link to="/entities">Entities</Link> page (requires entity_builder:schema:write).
+            </p>
+          )}
           {entityId && !entities?.some((e) => e.id === entityId) && pickedEntity && (
             <p className="builder-muted" style={{ fontSize: '0.875rem' }}>
               Selected: <strong>{pickedEntity.name}</strong> — refine search to see it in the list.

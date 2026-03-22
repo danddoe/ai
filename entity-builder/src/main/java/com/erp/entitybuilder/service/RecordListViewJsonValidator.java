@@ -100,6 +100,10 @@ public class RecordListViewJsonValidator {
         if (showActions != null && !showActions.isNull() && !showActions.isBoolean()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "bad_request", "showRowActions must be a boolean");
         }
+        JsonNode showRecordId = root.get("showRecordId");
+        if (showRecordId != null && !showRecordId.isNull() && !showRecordId.isBoolean()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "bad_request", "showRecordId must be a boolean");
+        }
     }
 
     private static void requireFieldSlug(JsonNode col) {

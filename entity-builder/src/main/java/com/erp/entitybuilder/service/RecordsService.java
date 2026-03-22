@@ -13,6 +13,7 @@ import com.erp.entitybuilder.service.query.ResolvedFilter;
 import com.erp.entitybuilder.service.search.FieldSearchability;
 import com.erp.entitybuilder.service.search.SearchLikeEscape;
 import com.erp.entitybuilder.service.storage.FieldStorage;
+import com.erp.entitybuilder.security.TenantPrincipal;
 import com.erp.entitybuilder.web.ApiException;
 import com.erp.entitybuilder.web.v1.dto.RecordDtos;
 import com.erp.entitybuilder.web.v1.dto.RecordQueryDtos;
@@ -22,6 +23,8 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -52,6 +55,7 @@ public class RecordsService {
     private final RecordFilterValidator recordFilterValidator;
     private final RecordFilterQueryExecutor recordFilterQueryExecutor;
     private final AuditLogWriter auditLogWriter;
+    private final DocumentNumberGenerationService documentNumberGenerationService;
 
     private final ObjectMapper canonicalMapper;
     private final ObjectMapper responseMapper;
@@ -69,6 +73,7 @@ public class RecordsService {
             GlobalSearchIndexService globalSearchIndexService,
             RecordFilterValidator recordFilterValidator,
             RecordFilterQueryExecutor recordFilterQueryExecutor,
+            DocumentNumberGenerationService documentNumberGenerationService,
             @Autowired(required = false) AuditLogWriter auditLogWriter
     ) {
         this.entityRepository = entityRepository;
@@ -83,6 +88,7 @@ public class RecordsService {
         this.globalSearchIndexService = globalSearchIndexService;
         this.recordFilterValidator = recordFilterValidator;
         this.recordFilterQueryExecutor = recordFilterQueryExecutor;
+        this.documentNumberGenerationService = documentNumberGenerationService;
         this.auditLogWriter = auditLogWriter;
 
         this.canonicalMapper = new ObjectMapper();
@@ -132,7 +138,7 @@ public class RecordsService {
                 continue;
             }
             if (!values.containsKey(f.getSlug()) || values.get(f.getSlug()) == null) {
-                throw new ApiException(HttpStatus.BAD_REQUEST, "bad_request", "Missing required field", Map.of("field", f.getSlug()));
+                throw missingRequiredFieldOnCreate(f);
             }
         }
 
@@ -162,6 +168,9 @@ public class RecordsService {
         }
 
         String bdn = resolveBusinessDocumentNumberForCreate(businessDocumentNumber, values, fieldBySlug);
+        if (bdn == null) {
+            bdn = documentNumberGenerationService.generateIfAbsent(tenantId, entityId, fields).orElse(null);
+        }
         if (bdn != null) {
             Optional<EntityRecord> existingByBdn = recordRepository.findByTenantIdAndEntityIdAndBusinessDocumentNumber(tenantId, entityId, bdn);
             if (existingByBdn.isPresent()) {
@@ -485,20 +494,35 @@ public class RecordsService {
 
         // Enforce required non-null after merge (EAV fields only)
         for (EntityField f : fields) {
-            if (!f.isRequired() || FieldStorage.isCoreDomain(f)) {
+            if (!f.isRequired() || FieldStorage.isCoreDomain(f) || FieldTypes.isDocumentNumber(f)) {
                 continue;
             }
             UUID fieldId = f.getId();
             if (f.isPii()) {
                 boolean hasPii = piiVaultRepository.findByTenantIdAndRecordIdAndFieldId(tenantId, recordId, fieldId).isPresent();
                 if (!hasPii) {
-                    throw new ApiException(HttpStatus.BAD_REQUEST, "bad_request", "Missing required field after update", Map.of("field", f.getSlug()));
+                    throw missingRequiredFieldAfterUpdate(
+                            f,
+                            "pii_value_missing",
+                            "no PII vault entry after merge; required field cannot be empty"
+                    );
                 }
             } else {
                 EntityRecordValue rv = valueRepository.findByRecordIdAndFieldId(recordId, fieldId)
                         .orElse(null);
-                if (rv == null || !isValueNonNull(f.getFieldType(), rv)) {
-                    throw new ApiException(HttpStatus.BAD_REQUEST, "bad_request", "Missing required field after update", Map.of("field", f.getSlug()));
+                if (rv == null) {
+                    throw missingRequiredFieldAfterUpdate(
+                            f,
+                            "value_row_missing",
+                            "no entity_record_values row for this field after merge"
+                    );
+                }
+                if (!isValueNonNull(f.getFieldType(), rv)) {
+                    throw missingRequiredFieldAfterUpdate(
+                            f,
+                            "value_empty",
+                            "stored value is null or empty for field type " + f.getFieldType()
+                    );
                 }
             }
         }
@@ -643,7 +667,7 @@ public class RecordsService {
                 Map<String, Object> linkPayload = new LinkedHashMap<>();
                 linkPayload.put("relationshipSlug", relationshipSlug);
                 linkPayload.put("toRecordId", toRecordId);
-                auditLogWriter.append(AuditEvent.builder()
+                AuditEvent.Builder b = AuditEvent.builder()
                         .tenantId(tenantId)
                         .actorId(userId)
                         .sourceService(AUDIT_SOURCE_SERVICE)
@@ -653,8 +677,9 @@ public class RecordsService {
                         .resourceId(fromRecordId)
                         .correlationId(correlationId)
                         .putPayload("context", auditContextMap(entityDef, fromRecord))
-                        .putPayload("link", linkPayload)
-                        .build());
+                        .putPayload("link", linkPayload);
+                attachActorSnapshot(b);
+                auditLogWriter.append(b.build());
             }
         }
     }
@@ -675,7 +700,7 @@ public class RecordsService {
                 Map<String, Object> linkPayload = new LinkedHashMap<>();
                 linkPayload.put("relationshipSlug", relationshipSlug);
                 linkPayload.put("toRecordId", toRecordId);
-                auditLogWriter.append(AuditEvent.builder()
+                AuditEvent.Builder b = AuditEvent.builder()
                         .tenantId(tenantId)
                         .actorId(userId)
                         .sourceService(AUDIT_SOURCE_SERVICE)
@@ -685,8 +710,9 @@ public class RecordsService {
                         .resourceId(fromRecordId)
                         .correlationId(correlationId)
                         .putPayload("context", auditContextMap(entityDef, fromRecord))
-                        .putPayload("link", linkPayload)
-                        .build());
+                        .putPayload("link", linkPayload);
+                attachActorSnapshot(b);
+                auditLogWriter.append(b.build());
             }
         }
     }
@@ -1013,6 +1039,7 @@ public class RecordsService {
         if (links != null) {
             b.putPayload("links", Map.of("after", auditLinkSnapshot(tenantId, recordId)));
         }
+        attachActorSnapshot(b);
         auditLogWriter.append(b.build());
     }
 
@@ -1061,6 +1088,7 @@ public class RecordsService {
         if (linksBlock != null) {
             b.putPayload("links", linksBlock);
         }
+        attachActorSnapshot(b);
         auditLogWriter.append(b.build());
     }
 
@@ -1077,7 +1105,7 @@ public class RecordsService {
         if (auditLogWriter == null) {
             return;
         }
-        auditLogWriter.append(AuditEvent.builder()
+        AuditEvent.Builder b = AuditEvent.builder()
                 .tenantId(tenantId)
                 .actorId(userId)
                 .sourceService(AUDIT_SOURCE_SERVICE)
@@ -1087,8 +1115,26 @@ public class RecordsService {
                 .resourceId(recordId)
                 .correlationId(correlationId)
                 .putPayload("context", auditContextMap(entityDef, record))
-                .putPayload("before", Map.of("values", snapshotValues, "links", snapshotLinks))
-                .build());
+                .putPayload("before", Map.of("values", snapshotValues, "links", snapshotLinks));
+        attachActorSnapshot(b);
+        auditLogWriter.append(b.build());
+    }
+
+    /**
+     * Snapshot of the caller for audit UIs when IAM {@code users} is not co-located with {@code audit_log}.
+     */
+    private static void attachActorSnapshot(AuditEvent.Builder b) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !(auth.getPrincipal() instanceof TenantPrincipal p)) {
+            return;
+        }
+        String email = p.getEmail();
+        if (email == null || email.isBlank()) {
+            return;
+        }
+        Map<String, Object> actor = new LinkedHashMap<>();
+        actor.put("email", email.trim());
+        b.putPayload("actor", actor);
     }
 
     private List<Map<String, Object>> computeUpdateValueChanges(
@@ -1309,6 +1355,26 @@ public class RecordsService {
                     "businessDocumentNumber must match document_number field in values", Map.of());
         }
         return fromRequest != null ? fromRequest : fromValues;
+    }
+
+    private static ApiException missingRequiredFieldOnCreate(EntityField f) {
+        Map<String, Object> d = new LinkedHashMap<>();
+        d.put("field", f.getSlug());
+        d.put("fieldName", f.getName());
+        d.put("fieldType", f.getFieldType());
+        String msg = "Missing required field \"" + f.getName() + "\" (slug: " + f.getSlug() + ", type: " + f.getFieldType() + ")";
+        return new ApiException(HttpStatus.BAD_REQUEST, "bad_request", msg, d);
+    }
+
+    private static ApiException missingRequiredFieldAfterUpdate(EntityField f, String reasonCode, String reasonDetail) {
+        Map<String, Object> d = new LinkedHashMap<>();
+        d.put("field", f.getSlug());
+        d.put("fieldName", f.getName());
+        d.put("fieldType", f.getFieldType());
+        d.put("reason", reasonCode);
+        String msg = "Missing required value after update for \"" + f.getName() + "\" (slug: " + f.getSlug() + ", type: "
+                + f.getFieldType() + "): " + reasonDetail;
+        return new ApiException(HttpStatus.BAD_REQUEST, "bad_request", msg, d);
     }
 
     private static Map<String, Object> eavValuesOnly(Map<String, Object> values, Map<String, EntityField> fieldBySlug) {

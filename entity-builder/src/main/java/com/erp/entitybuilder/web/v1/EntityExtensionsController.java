@@ -21,7 +21,7 @@ public class EntityExtensionsController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAuthority('entity_builder:schema:read')")
+    @PreAuthorize("@entityBuilderSecurity.canReadSchema()")
     public List<EntityDtos.EntityDto> list(@PathVariable UUID baseEntityId) {
         UUID tenantId = SecurityUtil.principal().getTenantId();
         return schemaService.listExtensions(tenantId, baseEntityId).stream().map(this::toDto).toList();

@@ -1,6 +1,9 @@
 import type { EntityFieldDto } from '../../api/schemas';
 import { useAuth } from '../../auth/AuthProvider';
-import type { RecordListColumnDefinition } from '../../utils/recordListViewDefinition';
+import {
+  RECORD_LIST_ROW_ID_SLUG,
+  type RecordListColumnDefinition,
+} from '../../utils/recordListViewDefinition';
 
 type Props = {
   fields: EntityFieldDto[];
@@ -81,15 +84,22 @@ export function ListDesignerFieldsPanel({
       <ul className="builder-field-list">
         {filtered.map((f) => {
           const on = fieldOnList(columns, f.slug);
+          const isRowIdSlug = f.slug.trim().toLowerCase() === RECORD_LIST_ROW_ID_SLUG;
           return (
             <li key={f.id}>
               <div className="builder-field-row">
                 <button
                   type="button"
-                  className={`builder-field-btn${schemaWritable ? ' focusable' : ''}`}
-                  disabled={!schemaWritable}
-                  onClick={() => schemaWritable && onAddColumn(f.slug)}
-                  title={schemaWritable ? `Add ${f.name} as column` : 'Schema write required'}
+                  className={`builder-field-btn${schemaWritable && !isRowIdSlug ? ' focusable' : ''}`}
+                  disabled={!schemaWritable || isRowIdSlug}
+                  onClick={() => schemaWritable && !isRowIdSlug && onAddColumn(f.slug)}
+                  title={
+                    isRowIdSlug
+                      ? 'Use “Show record ID column” above to show or hide the UUID on Records; it is not a list column.'
+                      : schemaWritable
+                        ? `Add ${f.name} as column`
+                        : 'Schema write required'
+                  }
                 >
                   <span className="builder-field-name">{f.name}</span>
                   <span className="builder-field-meta">

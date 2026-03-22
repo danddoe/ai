@@ -20,11 +20,23 @@ class PortalNavigationAdminServiceRouteTest {
     void allowsSimplePortalRootsForInternalSpa() {
         assertThat(PortalNavigationAdminService.isAllowedSimplePortalRoute("/home")).isTrue();
         assertThat(PortalNavigationAdminService.isAllowedSimplePortalRoute("/entities")).isTrue();
+        assertThat(PortalNavigationAdminService.isAllowedSimplePortalRoute("/audit")).isTrue();
         assertThat(PortalNavigationAdminService.isAllowedSimplePortalRoute("/home/")).isTrue();
         assertThat(PortalNavigationAdminService.isAllowedInternalSpaRoute("/home")).isTrue();
         assertThat(PortalNavigationAdminService.isAllowedInternalSpaRoute("/entities")).isTrue();
+        assertThat(PortalNavigationAdminService.isAllowedInternalSpaRoute("/audit")).isTrue();
         assertThat(PortalNavigationAdminService.isAllowedSimplePortalRoute("/home?x=1")).isFalse();
         assertThat(PortalNavigationAdminService.isAllowedSimplePortalRoute("/evil")).isFalse();
+    }
+
+    @Test
+    void allowsEntityAuditPath() {
+        UUID e = UUID.randomUUID();
+        String path = "/entities/" + e + "/audit";
+        assertThat(PortalNavigationAdminService.isAllowedEntityAuditRoute(path)).isTrue();
+        assertThat(PortalNavigationAdminService.isAllowedInternalSpaRoute(path)).isTrue();
+        assertThat(PortalNavigationAdminService.isAllowedEntityAuditRoute(path + "/")).isTrue();
+        assertThat(PortalNavigationAdminService.isAllowedEntityAuditRoute(path + "?page=1")).isFalse();
     }
 
     @Test
@@ -32,6 +44,7 @@ class PortalNavigationAdminServiceRouteTest {
         assertThat(PortalNavigationAdminService.isAllowedEntityRecordRoute("/evil")).isFalse();
         assertThat(PortalNavigationAdminService.isAllowedEntityRecordRoute("/entities/not-uuid/records")).isFalse();
         assertThat(PortalNavigationAdminService.isAllowedEntityRecordRoute("/entities/" + UUID.randomUUID() + "/other")).isFalse();
+        assertThat(PortalNavigationAdminService.isAllowedEntityAuditRoute("/entities/" + UUID.randomUUID() + "/records")).isFalse();
     }
 
     @Test
@@ -42,6 +55,10 @@ class PortalNavigationAdminServiceRouteTest {
         assertThat(PortalNavigationAdminService.isAllowedEntityRecordRoute(base + "?cols=a,b&inline=a&actions=1")).isTrue();
         assertThat(PortalNavigationAdminService.isAllowedEntityRecordRoute(base + "?page=1&pageSize=50&q=hello")).isTrue();
         assertThat(PortalNavigationAdminService.isAllowedEntityRecordRoute(base + "?view=" + v)).isTrue();
+        assertThat(PortalNavigationAdminService.isAllowedEntityRecordRoute(
+                base + "?view=" + v + "&showRecordId=0&actions=0")).isTrue();
+        assertThat(PortalNavigationAdminService.isAllowedEntityRecordRoute(
+                base + "?view=" + v + "&showUuid=false")).isTrue();
     }
 
     @Test

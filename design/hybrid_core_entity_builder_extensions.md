@@ -1,6 +1,6 @@
 # Hybrid core + entity-builder extensions (implementation summary)
 
-This document records what was implemented for the **hybrid hardcoded core + entity-builder EAV extensions** pattern: core business state in domain services (e.g. lending), extensions in `entity_record_values`, metadata in `entities` / `entity_fields`, IAM unchanged. It complements [`EntityField_storage_contract.md`](EntityField_storage_contract.md) and [`hybrid_domain_extensions.md`](hybrid_domain_extensions.md).
+This document records what was implemented for the **hybrid hardcoded core + entity-builder EAV extensions** pattern: core business state in domain services (e.g. loans-module), extensions in `entity_record_values`, metadata in `entities` / `entity_fields`, IAM unchanged. It complements [`EntityField_storage_contract.md`](EntityField_storage_contract.md) and [`hybrid_domain_extensions.md`](hybrid_domain_extensions.md).
 
 Related plan (reference only; do not treat this file as the plan source of truth): Cursor plan *Hybrid core + dynamic fields* (revised).
 
@@ -38,26 +38,26 @@ Related plan (reference only; do not treat this file as the plan source of truth
 
 ---
 
-## 4. Lending module (core SoT)
+## 4. Loans module (core SoT)
 
-- **Gradle:** [`lending/`](../lending/) module, included in [`settings.gradle`](../settings.gradle).
-- **Schema:** Flyway [`V1__loan_applications.sql`](../lending/src/main/resources/db/migration/V1__loan_applications.sql) (`flyway_lending_schema_history`).
-- **API:** `POST/GET/PATCH` [`/v1/tenants/{tenantId}/loans`](../lending/src/main/java/com/erp/lending/web/v1/LoanApplicationsController.java) (default port **8083**, JWT aligned with IAM).
-- **Overview:** [`lending/README.md`](../lending/README.md).
+- **Gradle:** [`loans-module/`](../loans-module/) module, included in [`settings.gradle`](../settings.gradle).
+- **Schema:** Flyway [`V1__loan_applications.sql`](../loans-module/src/main/resources/db/migration/V1__loan_applications.sql) (`flyway_lending_schema_history`).
+- **API:** `POST/GET/PATCH` [`/v1/tenants/{tenantId}/loans`](../loans-module/src/main/java/com/erp/loansmodule/web/v1/LoanApplicationsController.java) (default port **8083**, JWT aligned with IAM).
+- **Overview:** [`loans-module/README.md`](../loans-module/README.md).
 
 ---
 
 ## 5. IAM and API gateway
 
 - **Permissions:** [`iam/.../V14__lending_permissions.sql`](../iam/src/main/resources/db/migration/V14__lending_permissions.sql) — `lending:loans:read`, `lending:loans:write`. Seeded superadmin (bootstrap) receives all permissions including these.
-- **Gateway:** [`api-gateway/application.yml`](../api-gateway/src/main/resources/application.yml) — `/v1/tenants/*/loans/**` → lending; `/v1/tenants/*/catalog/**` → entity-builder.
+- **Gateway:** [`api-gateway/application.yml`](../api-gateway/src/main/resources/application.yml) — `/v1/tenants/*/loans/**` → loans-module (`LOANS_MODULE_URL`); `/v1/tenants/*/catalog/**` → entity-builder.
 
 ---
 
 ## 6. Portal merge (demo)
 
-- **API helpers:** [`erp-portal/src/api/hybridLoan.ts`](../erp-portal/src/api/hybridLoan.ts) — lending, catalog sync, entity-by-slug, record-by-external-id, **`loadMergedLoanView`**.
-- **UI:** [`LoanHybridDemoPage`](../erp-portal/src/pages/LoanHybridDemoPage.tsx), route **`/lending/hybrid-demo`**, link from [`HomePage`](../erp-portal/src/pages/HomePage.tsx).
+- **API helpers:** [`erp-portal/src/api/hybridLoan.ts`](../erp-portal/src/api/hybridLoan.ts) — loans-module, catalog sync, entity-by-slug, record-by-external-id, **`loadMergedLoanView`**.
+- **UI:** [`LoanHybridDemoPage`](../erp-portal/src/pages/LoanHybridDemoPage.tsx), route **`/loans-module/hybrid-demo`**, link from [`HomePage`](../erp-portal/src/pages/HomePage.tsx).
 
 ---
 
@@ -69,8 +69,8 @@ Related plan (reference only; do not treat this file as the plan source of truth
 
 ## 8. Local verification
 
-1. Apply IAM **V14** and run **lending** Flyway on the shared database.
-2. Run **lending** (8083), **entity-builder** (8081), **gateway** (8000).
+1. Apply IAM **V14** and run **loans-module** Flyway on the shared database.
+2. Run **loans-module** (8083), **entity-builder** (8081), **gateway** (8000).
 3. Ensure the user has **`lending:loans:*`** and **`entity_builder:schema:write`** (or use superadmin).
 4. In the portal demo: **Sync catalog** → **Create + merge**; optional **Branch notes** creates the EAV row.
 
@@ -88,4 +88,4 @@ Related plan (reference only; do not treat this file as the plan source of truth
 | Identity / RBAC | IAM (unchanged for this pattern) |
 | Primary SPA | erp-portal |
 
-**Avoid:** duplicating core facts in EAV; implementing lending workflow inside entity-builder.
+**Avoid:** duplicating core facts in EAV; implementing loan workflow inside entity-builder.

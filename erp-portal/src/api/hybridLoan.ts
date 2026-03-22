@@ -1,4 +1,5 @@
 import { apiFetch } from './client';
+import { syncSystemEntityCatalog } from './schemas';
 
 export type LoanDto = {
   id: string;
@@ -55,10 +56,7 @@ export async function getLoan(tenantId: string, loanId: string): Promise<LoanDto
 }
 
 export async function syncCatalog(tenantId: string, manifestKey?: string): Promise<{ syncedManifestKeys: string[] }> {
-  const q = manifestKey ? `?manifestKey=${encodeURIComponent(manifestKey)}` : '';
-  const res = await apiFetch(`/v1/tenants/${tenantId}/catalog/sync${q}`, { method: 'POST' });
-  const data = await parseJson<{ syncedManifestKeys?: string[] }>(res);
-  return { syncedManifestKeys: data.syncedManifestKeys ?? [] };
+  return syncSystemEntityCatalog(tenantId, manifestKey);
 }
 
 export async function getEntityBySlug(slug: string): Promise<EntityDto> {

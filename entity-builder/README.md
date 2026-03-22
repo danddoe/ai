@@ -44,14 +44,14 @@ Minimum permission codes (v1):
 
 ## Hybrid domain core + EAV extensions
 
-Some entities describe **both** columns owned by another service (e.g. `lending` / `loan_applications`) and **tenant extensions** stored here:
+Some entities describe **both** columns owned by another service (e.g. `loans-module` / `loan_applications`) and **tenant extensions** stored here:
 
 - **`entity_fields.config.storage`:** `CORE_DOMAIN` (metadata only; no `entity_record_values` row) or `EAV_EXTENSION` (default). See [`design/EntityField_storage_contract.md`](../design/EntityField_storage_contract.md).
 - **Record APIs** reject payloads that include `CORE_DOMAIN` slugs; required-field validation applies only to EAV fields.
 - **GET record** `values` omit core slugs (merge core DTOs in the portal or a BFF).
 - **Lookup by domain id:** `GET /v1/tenants/{tenantId}/entities/{entityId}/records/by-external-id/{externalId}` (e.g. `externalId` = loan UUID string).
 - **Resolve entity id by slug:** `GET /v1/entities/by-slug/{slug}`.
-- **Classpath manifests:** `src/main/resources/system-entity-catalog/*.json` — apply with `POST /v1/tenants/{tenantId}/catalog/sync?manifestKey=loan_application` (`entity_builder:schema:write`).
+- **Classpath manifests:** `src/main/resources/system-entity-catalog/*.json` — apply with `POST /v1/tenants/{tenantId}/catalog/sync?manifestKey=loan_application` (`entity_builder:schema:write`). To scaffold manifests from JPA (`core-service` / `loans-module`), add each entity to [`entity-catalog-generator/catalog-spec.json`](../entity-catalog-generator/catalog-spec.json) and run `gradlew :entity-catalog-generator:generateEntityCatalog`. **Only spec-listed entities are written**; existing `*.json` files are **overwritten** by default (`-PcatalogGen.overwrite=false` to skip). Use `-PcatalogGen.updateIndex=true` to append new manifest keys to `index.json` (on PowerShell quote `-P…=true`). Non–JPA fields (e.g. `EAV_EXTENSION`) can stay in spec via `extraFields` on that entity.
 
 ## Search and lookups
 

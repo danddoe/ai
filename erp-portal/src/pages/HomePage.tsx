@@ -67,7 +67,7 @@ export function HomePage() {
         )}
         <Link to="/entities">Browse all entities →</Link>
         {' · '}
-        <Link to="/lending/hybrid-demo">Hybrid loan (core + EAV) demo →</Link>
+        <Link to="/loans-module/hybrid-demo">Hybrid loan (core + EAV) demo →</Link>
       </p>
     </div>
   );

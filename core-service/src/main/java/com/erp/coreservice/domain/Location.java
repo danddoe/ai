@@ -2,6 +2,9 @@ package com.erp.coreservice.domain;
 
 import jakarta.persistence.*;
 
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 import java.time.Instant;
 import java.util.UUID;
 
@@ -20,6 +23,9 @@ public class Location {
     @Column(name = "location_name", nullable = false)
     private String locationName;
 
+    @Column(name = "slug", length = 128)
+    private String slug;
+
     @Column(name = "address_line_1", length = 500)
     private String addressLine1;
 
@@ -33,6 +39,7 @@ public class Location {
     private String postalCode;
 
     @Column(name = "country_code", nullable = false, length = 2)
+    @JdbcTypeCode(SqlTypes.CHAR)
     private String countryCode;
 
     @Column(name = "region_id")
@@ -78,6 +85,14 @@ public class Location {
 
     public void setLocationName(String locationName) {
         this.locationName = locationName;
+    }
+
+    public String getSlug() {
+        return slug;
+    }
+
+    public void setSlug(String slug) {
+        this.slug = slug;
     }
 
     public String getAddressLine1() {

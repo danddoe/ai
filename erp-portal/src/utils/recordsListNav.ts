@@ -45,6 +45,11 @@ export type ListViewQueryState = {
   cols: string[];
   inlineSlugs: string[];
   showRowActions: boolean;
+  /**
+   * With `viewId`: set to {@code false} to add {@code showRecordId=0} when the design hides the UUID column.
+   * Omit or leave undefined when the Id column is shown — the list definition drives that without a query param.
+   */
+  showRecordId?: boolean;
 };
 
 export function parseListViewQueryFromRoutePath(routePath: string): ListViewQueryState {
@@ -61,7 +66,11 @@ export function parseListViewQueryFromRoutePath(routePath: string): ListViewQuer
     .map((s) => s.trim())
     .filter(Boolean);
   const showRowActions = p.get('actions') !== '0';
-  return { viewId, cols, inlineSlugs, showRowActions };
+  const sr = (p.get('showRecordId') ?? p.get('showUuid') ?? '').trim().toLowerCase();
+  let showRecordId: boolean | undefined;
+  if (sr === '0' || sr === 'false') showRecordId = false;
+  else if (sr === '1' || sr === 'true') showRecordId = true;
+  return { viewId, cols, inlineSlugs, showRowActions, showRecordId };
 }
 
 /** Query string without `?`, or empty. */
@@ -69,6 +78,8 @@ export function buildRecordsListQueryString(state: ListViewQueryState): string {
   const p = new URLSearchParams();
   if (state.viewId && UUID_RE.test(state.viewId)) {
     p.set('view', state.viewId);
+    if (state.showRecordId === false) p.set('showRecordId', '0');
+    if (!state.showRowActions) p.set('actions', '0');
     return p.toString();
   }
   if (state.cols.length > 0) p.set('cols', state.cols.join(','));
@@ -100,8 +111,17 @@ export function mergeRecordsListLocation(
   return qs ? `/entities/${eid}/records?${qs}` : `/entities/${eid}/records`;
 }
 
-/** Path with only `view=` (for quick links). */
-export function recordsListPathForViewId(entityId: string, viewId: string): string {
-  const eid = normalizeEntityIdForMatch(entityId);
-  return `/entities/${eid}/records?view=${viewId.trim()}`;
+/** Path to Records with `view=`; adds `showRecordId=0` only when the view hides the UUID column. */
+export function recordsListPathForViewId(
+  entityId: string,
+  viewId: string,
+  opts?: { showRecordId?: boolean; showRowActions?: boolean }
+): string {
+  return recordsListPath(entityId, {
+    viewId: viewId.trim(),
+    cols: [],
+    inlineSlugs: [],
+    showRowActions: opts?.showRowActions !== false,
+    showRecordId: opts?.showRecordId === false ? false : undefined,
+  });
 }

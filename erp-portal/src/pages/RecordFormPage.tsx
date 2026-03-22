@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useLocation } from 'react-router-dom';
 import {
+  auditEventActorDisplay,
   createRecord,
   getEntity,
   getRecord,
@@ -14,10 +15,20 @@ import {
   type FormLayoutDto,
 } from '../api/schemas';
 import { useAuth } from '../auth/AuthProvider';
+import { AuditPayloadModal } from '../components/AuditPayloadModal';
 import {
   LayoutV2RuntimeRenderer,
   validateRequiredInRegions,
 } from '../components/runtime/LayoutV2RuntimeRenderer';
+import {
+  assertCoreDomainRoutedOrThrow,
+  createCoreMasterRow,
+  coreDtoToFormValues,
+  getCoreMasterRow,
+  isCoreServiceHybridEntitySlug,
+  patchCoreMasterRow,
+} from '../api/coreMasterDataHybrid';
+import { isCoreDomainField } from '../utils/fieldStorage';
 import { parseLayoutV2, regionsForWizardStep } from '../utils/layoutV2';
 import type { LayoutV2 } from '../types/formLayout';
 
@@ -59,6 +70,8 @@ export function RecordFormPage() {
   const [auditTotal, setAuditTotal] = useState(0);
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditError, setAuditError] = useState<string | null>(null);
+  const [auditPayloadOpen, setAuditPayloadOpen] = useState<AuditEventDto | null>(null);
+  const [entitySlug, setEntitySlug] = useState<string>('');
 
   const wizardIds = layout?.runtime?.recordEntry?.wizard?.stepOrderRegionIds ?? [];
   const isWizard =
@@ -86,6 +99,7 @@ export function RecordFormPage() {
         listFormLayouts(entityId),
       ]);
       setEntityName(ent.name);
+      setEntitySlug(ent.slug || '');
       setFields(flds);
       const def = layouts.find((l) => l.isDefault) ?? null;
       setLayoutDto(def);
@@ -109,7 +123,20 @@ export function RecordFormPage() {
       }
 
       const rec = await getRecord(tenantId, entityId, recordId);
-      setValues({ ...rec.values });
+      let merged = { ...rec.values };
+      if (isCoreServiceHybridEntitySlug(ent.slug) && rec.externalId) {
+        try {
+          const coreDto = await getCoreMasterRow(tenantId, ent.slug, rec.externalId);
+          merged = { ...coreDtoToFormValues(flds, coreDto), ...merged };
+        } catch (e) {
+          throw new Error(
+            e instanceof Error
+              ? e.message
+              : 'Failed to load core row for this record (check domain API permissions).'
+          );
+        }
+      }
+      setValues(merged);
       setWizardStep(0);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load');
@@ -154,6 +181,9 @@ export function RecordFormPage() {
   function buildSubmitValues(raw: Record<string, unknown>): Record<string, unknown> {
     const out: Record<string, unknown> = {};
     for (const f of fields) {
+      if (isCoreDomainField(f)) {
+        continue;
+      }
       if (isDocumentNumberFieldType(f.fieldType)) {
         continue;
       }
@@ -207,16 +237,45 @@ export function RecordFormPage() {
     setError(null);
     setSaveSuccess(null);
     try {
+      assertCoreDomainRoutedOrThrow(entitySlug, fields);
+      const hybrid = isCoreServiceHybridEntitySlug(entitySlug);
+
       if (isCreate) {
-        const created = await createRecord(tenantId, entityId, {
-          values: payload,
-          ...(bdn !== undefined ? { businessDocumentNumber: bdn } : {}),
-        });
-        const savedAt = new Date().toISOString();
-        navigate(`/entities/${entityId}/records/${created.id}`, {
-          replace: true,
-          state: { recordSaveFlash: { at: savedAt } },
-        });
+        if (hybrid) {
+          const coreId = await createCoreMasterRow(tenantId, entitySlug, fields, values);
+          const created = await createRecord(tenantId, entityId, {
+            values: payload,
+            externalId: coreId,
+            ...(bdn !== undefined ? { businessDocumentNumber: bdn } : {}),
+          });
+          const savedAt = new Date().toISOString();
+          navigate(`/entities/${entityId}/records/${created.id}`, {
+            replace: true,
+            state: { recordSaveFlash: { at: savedAt } },
+          });
+        } else {
+          const created = await createRecord(tenantId, entityId, {
+            values: payload,
+            ...(bdn !== undefined ? { businessDocumentNumber: bdn } : {}),
+          });
+          const savedAt = new Date().toISOString();
+          navigate(`/entities/${entityId}/records/${created.id}`, {
+            replace: true,
+            state: { recordSaveFlash: { at: savedAt } },
+          });
+        }
+      } else if (hybrid) {
+        const rec = await getRecord(tenantId, entityId, recordId);
+        if (!rec.externalId) {
+          throw new Error(
+            'This extension record has no externalId link to the domain row; cannot save core fields. Recreate the record or fix data.'
+          );
+        }
+        await patchCoreMasterRow(tenantId, entitySlug, rec.externalId, fields, values);
+        await patchRecord(tenantId, entityId, recordId, { values: payload });
+        await load();
+        setSaveSuccess(`Saved successfully at ${formatSavedTimestamp(new Date())}.`);
+        void loadAuditHistory();
       } else {
         await patchRecord(tenantId, entityId, recordId, { values: payload });
         await load();
@@ -381,25 +440,24 @@ export function RecordFormPage() {
                           </td>
                           <td>{e.operation ?? '—'}</td>
                           <td>
-                            <code>{e.actorId ?? '—'}</code>
+                            {(() => {
+                              const display = auditEventActorDisplay(e);
+                              const idOnly = display === (e.actorId ?? '—');
+                              return idOnly ? (
+                                <code>{display}</code>
+                              ) : (
+                                <span title={e.actorId ? `User id: ${e.actorId}` : undefined}>{display}</span>
+                              );
+                            })()}
                           </td>
-                          <td style={{ maxWidth: 360 }}>
-                            <details>
-                              <summary className="builder-muted" style={{ cursor: 'pointer' }}>
-                                View JSON
-                              </summary>
-                              <pre
-                                style={{
-                                  marginTop: 8,
-                                  fontSize: 11,
-                                  overflow: 'auto',
-                                  maxHeight: 200,
-                                  textAlign: 'left',
-                                }}
-                              >
-                                {JSON.stringify(e.payload, null, 2)}
-                              </pre>
-                            </details>
+                          <td style={{ maxWidth: 140 }}>
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              onClick={() => setAuditPayloadOpen(e)}
+                            >
+                              View payload
+                            </button>
                           </td>
                         </tr>
                       ))}
@@ -427,6 +485,13 @@ export function RecordFormPage() {
             }
             navigate(`/entities/${entityId}/records`);
           }}
+        />
+      )}
+      {auditPayloadOpen && (
+        <AuditPayloadModal
+          payload={auditPayloadOpen.payload}
+          title={`Payload · ${auditPayloadOpen.action} · ${new Date(auditPayloadOpen.createdAt).toLocaleString()}`}
+          onClose={() => setAuditPayloadOpen(null)}
         />
       )}
     </div>

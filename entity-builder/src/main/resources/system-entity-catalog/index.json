@@ -6,6 +6,7 @@
     "region",
     "location",
     "property",
-    "property_unit"
+    "property_unit",
+    "portal_host_binding"
   ]
 }
