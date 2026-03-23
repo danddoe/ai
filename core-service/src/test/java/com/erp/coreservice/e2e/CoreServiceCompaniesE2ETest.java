@@ -76,6 +76,26 @@ class CoreServiceCompaniesE2ETest extends AbstractCoreServiceE2ETest {
         assertThat(patchResp.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(patchResp.getBody().get("companyName")).isEqualTo("E2E Sub Renamed");
 
+        Map<String, Object> patchAlias = new HashMap<>();
+        patchAlias.put("alias", "E2E Sub Alias");
+        ResponseEntity<Map> patchAliasResp = restTemplate.exchange(
+                tenantPath(tenantId, "/companies/" + childId),
+                HttpMethod.PATCH,
+                new HttpEntity<>(patchAlias, headers),
+                Map.class
+        );
+        assertThat(patchAliasResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(patchAliasResp.getBody().get("alias")).isEqualTo("E2E Sub Alias");
+
+        ResponseEntity<Map> getAfterAlias = restTemplate.exchange(
+                tenantPath(tenantId, "/companies/" + childId),
+                HttpMethod.GET,
+                new HttpEntity<>(null, headers),
+                Map.class
+        );
+        assertThat(getAfterAlias.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(getAfterAlias.getBody().get("alias")).isEqualTo("E2E Sub Alias");
+
         Map<String, Object> clearParent = new HashMap<>();
         clearParent.put("clearParentCompany", true);
         ResponseEntity<Map> clearResp = restTemplate.exchange(

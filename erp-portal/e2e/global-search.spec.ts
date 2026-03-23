@@ -4,18 +4,23 @@ import { test, expect } from '@playwright/test';
  * Live UI test: real browser against a running portal + API gateway + IAM + global-search
  * (and entity-builder for record hits). No mocks.
  *
- * Env (optional; defaults match IAM `default-bootstrap` seed in README):
- *   E2E_TENANT_SLUG   default `ai`
- *   E2E_USER_EMAIL     default `superadmin@ai.com`
- *   E2E_USER_PASSWORD  default `SuperAdminDev123!`
- *   PORTAL_BASE_URL    default `http://localhost:5173`
+ * Env:
+ *   E2E_USER_PASSWORD  required — use IAM bootstrap password (e.g. from Vault: vault/linux/e2e-env.sh)
+ *   E2E_TENANT_SLUG    optional, default `ai`
+ *   E2E_USER_EMAIL     optional, default `superadmin@ai.com`
+ *   PORTAL_BASE_URL    optional, default `http://localhost:5173`
  *
  * Prereqs: CockroachDB, IAM, entity-builder, global-search, api-gateway, and either
  * `npm run dev` for the portal or `PORTAL_E2E_SERVE=1` on the test command.
  */
 const tenant = process.env.E2E_TENANT_SLUG ?? 'ai';
 const email = process.env.E2E_USER_EMAIL ?? 'superadmin@ai.com';
-const password = process.env.E2E_USER_PASSWORD ?? 'SuperAdminDev123!';
+const password = process.env.E2E_USER_PASSWORD;
+if (!password) {
+  throw new Error(
+    'E2E_USER_PASSWORD is required (no default). Set it to match the seeded IAM user, e.g. from Vault or SEED_SUPERADMIN_PASSWORD.'
+  );
+}
 
 test.describe.serial('Global search omnibox (live)', () => {
   test.beforeEach(async ({ page }) => {

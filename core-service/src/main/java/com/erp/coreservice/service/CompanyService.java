@@ -1,5 +1,7 @@
 package com.erp.coreservice.service;
 
+import com.erp.coreservice.audit.CoreDomainAuditService;
+import com.erp.coreservice.audit.CoreEntityAuditSnapshots;
 import com.erp.coreservice.domain.Company;
 import com.erp.coreservice.domain.CompanyHierarchyHistory;
 import com.erp.coreservice.domain.BusinessUnit;
@@ -16,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -25,15 +28,18 @@ public class CompanyService {
     private final CompanyRepository companyRepository;
     private final CompanyHierarchyHistoryRepository companyHierarchyHistoryRepository;
     private final BusinessUnitRepository businessUnitRepository;
+    private final CoreDomainAuditService coreDomainAuditService;
 
     public CompanyService(
             CompanyRepository companyRepository,
             CompanyHierarchyHistoryRepository companyHierarchyHistoryRepository,
-            BusinessUnitRepository businessUnitRepository
+            BusinessUnitRepository businessUnitRepository,
+            CoreDomainAuditService coreDomainAuditService
     ) {
         this.companyRepository = companyRepository;
         this.companyHierarchyHistoryRepository = companyHierarchyHistoryRepository;
         this.businessUnitRepository = businessUnitRepository;
+        this.coreDomainAuditService = coreDomainAuditService;
     }
 
     @Transactional
@@ -51,10 +57,17 @@ public class CompanyService {
         if (c.getBaseCurrency().length() != 3) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "bad_request", "baseCurrency must be ISO 4217 (3 letters)");
         }
+        if (req.getSlug() != null && !req.getSlug().isBlank()) {
+            c.setSlug(req.getSlug().trim());
+        }
+        if (req.getAlias() != null && !req.getAlias().isBlank()) {
+            c.setAlias(req.getAlias().trim());
+        }
         Company saved = companyRepository.save(c);
         HierarchyCycleChecker.assertNoCompanyParentCycle(
                 companyRepository, tenantId, saved.getCompanyId(), saved.getParentCompanyId());
         openCompanyHistory(tenantId, saved.getParentCompanyId(), saved.getCompanyId(), saved.getOwnershipPct(), LocalDate.now());
+        coreDomainAuditService.companyCreated(tenantId, saved);
         return saved;
     }
 
@@ -74,6 +87,7 @@ public class CompanyService {
     @Transactional
     public Company patch(UUID tenantId, UUID companyId, OrgDtos.PatchCompanyRequest req) {
         Company c = get(tenantId, companyId);
+        Map<String, Object> auditBefore = CoreEntityAuditSnapshots.company(c);
         UUID oldParent = c.getParentCompanyId();
         BigDecimal oldOwnership = c.getOwnershipPct();
         boolean hierarchyChanged = false;
@@ -109,6 +123,18 @@ public class CompanyService {
         if (req.getCompanyName() != null && !req.getCompanyName().isBlank()) {
             c.setCompanyName(req.getCompanyName().trim());
         }
+        if (req.isClearSlug()) {
+            c.setSlug(null);
+        } else if (req.getSlug() != null) {
+            String s = req.getSlug().trim();
+            c.setSlug(s.isEmpty() ? null : s);
+        }
+        if (req.isClearAlias()) {
+            c.setAlias(null);
+        } else if (req.getAlias() != null) {
+            String a = req.getAlias().trim();
+            c.setAlias(a.isEmpty() ? null : a);
+        }
         if (req.getBaseCurrency() != null && !req.getBaseCurrency().isBlank()) {
             String bc = req.getBaseCurrency().trim().toUpperCase();
             if (bc.length() != 3) {
@@ -130,6 +156,7 @@ public class CompanyService {
             closeOpenCompanyHistory(tenantId, companyId, today);
             openCompanyHistory(tenantId, saved.getParentCompanyId(), saved.getCompanyId(), saved.getOwnershipPct(), today);
         }
+        coreDomainAuditService.companyUpdated(tenantId, auditBefore, saved);
         return saved;
     }
 

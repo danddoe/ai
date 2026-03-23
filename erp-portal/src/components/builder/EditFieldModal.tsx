@@ -12,6 +12,11 @@ import {
   buildDocumentNumberGenerationPayload,
   readDocGenFromConfig,
 } from './documentNumberGeneration';
+import {
+  applyTextLengthConstraintsToConfig,
+  fieldTypeSupportsTextLengthConstraints,
+  readConfigLengthString,
+} from '../../utils/fieldTextConstraints';
 
 type Props = {
   entityId: string;
@@ -25,6 +30,7 @@ function configSearchable(config: EntityFieldDto['config']): boolean {
 }
 
 const EDITABLE_FIELD_TYPES: { value: string; label: string }[] = [
+  { value: 'string', label: 'string' },
   { value: 'text', label: 'text' },
   { value: 'number', label: 'number' },
   { value: 'boolean', label: 'boolean' },
@@ -47,10 +53,13 @@ export function EditFieldModal({ entityId, field, onClose, onUpdated }: Props) {
   const [docPrefix, setDocPrefix] = useState(docInit.prefix);
   const [docSequenceWidth, setDocSequenceWidth] = useState(docInit.sequenceWidth);
   const [docTimeZone, setDocTimeZone] = useState(docInit.timeZone);
+  const [minLenStr, setMinLenStr] = useState(() => readConfigLengthString(field.config as Record<string, unknown> | null, 'minLength'));
+  const [maxLenStr, setMaxLenStr] = useState(() => readConfigLengthString(field.config as Record<string, unknown> | null, 'maxLength'));
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
   const showDocumentNumberSection = isDocumentNumberFieldType(fieldType);
+  const showTextLengthSection = fieldTypeSupportsTextLengthConstraints(fieldType);
 
   const fieldTypeSelectOptions = useMemo(() => {
     const current = fieldType.trim();
@@ -60,8 +69,11 @@ export function EditFieldModal({ entityId, field, onClose, onUpdated }: Props) {
     return [...EDITABLE_FIELD_TYPES, { value: current, label: `${current} (custom)` }];
   }, [fieldType]);
 
-  const mergedConfig = useMemo(() => {
+  /** Min/max length are merged on submit after validation (see {@link applyTextLengthConstraintsToConfig}). */
+  const mergedConfigBase = useMemo(() => {
     const base = { ...(field.config ?? {}) } as Record<string, unknown>;
+    delete base.minLength;
+    delete base.maxLength;
     if (includeInSearch) {
       base.isSearchable = true;
     } else {
@@ -93,6 +105,15 @@ export function EditFieldModal({ entityId, field, onClose, onUpdated }: Props) {
     setError(null);
     setPending(true);
     try {
+      const config = { ...mergedConfigBase };
+      if (showTextLengthSection) {
+        const lenErr = applyTextLengthConstraintsToConfig(config, minLenStr, maxLenStr);
+        if (lenErr) {
+          setError(lenErr);
+          setPending(false);
+          return;
+        }
+      }
       const updated = await patchField(entityId, field.id, {
         name: name.trim(),
         slug: slug.trim(),
@@ -100,7 +121,7 @@ export function EditFieldModal({ entityId, field, onClose, onUpdated }: Props) {
         required,
         pii,
         labelOverride: formLabel.trim() || '',
-        config: mergedConfig,
+        config,
       });
       onUpdated(updated);
       onClose();
@@ -177,6 +198,43 @@ export function EditFieldModal({ entityId, field, onClose, onUpdated }: Props) {
           />
           Include in global search / lookups
         </label>
+
+        <p className="builder-muted" style={{ fontSize: '0.8125rem', margin: 0 }}>
+          <strong>Width on the form</strong> is set per layout: click the field on the canvas, then under{' '}
+          <strong>Presentation</strong> use the <strong>Width</strong> control (full / half / third). That value is stored
+          on the placement, not on the field definition.
+        </p>
+
+        {showTextLengthSection && (
+          <fieldset style={{ border: '1px solid #e4e4e7', borderRadius: 8, padding: '10px 12px', margin: 0 }}>
+            <legend style={{ fontSize: '0.8125rem', padding: '0 6px' }}>Text length (optional)</legend>
+            <p className="builder-muted" style={{ fontSize: '0.75rem', margin: '0 0 8px' }}>
+              Enforced in the record form before save (and as HTML length hints). Leave blank for no limit.
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <label className="field-label" style={{ margin: 0 }}>
+                Min characters
+                <input
+                  className="input"
+                  inputMode="numeric"
+                  value={minLenStr}
+                  onChange={(e) => setMinLenStr(e.target.value.replace(/\D/g, ''))}
+                  placeholder="—"
+                />
+              </label>
+              <label className="field-label" style={{ margin: 0 }}>
+                Max characters
+                <input
+                  className="input"
+                  inputMode="numeric"
+                  value={maxLenStr}
+                  onChange={(e) => setMaxLenStr(e.target.value.replace(/\D/g, ''))}
+                  placeholder="—"
+                />
+              </label>
+            </div>
+          </fieldset>
+        )}
 
         {showDocumentNumberSection && (
           <DocumentNumberGenerationSection

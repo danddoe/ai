@@ -1,6 +1,15 @@
 spring:
   application:
     name: entity-builder
+  cloud:
+    vault:
+      uri: ${VAULT_ADDR:http://127.0.0.1:8200}
+      authentication: TOKEN
+      token: ${VAULT_TOKEN:}
+  config:
+    import:
+      - optional:vault://secret/erp/${SPRING_VAULT_ENV:dev}/common
+      - optional:vault://secret/erp/${SPRING_VAULT_ENV:dev}/entity-builder
   # DevTools classpath restart + Flyway on CockroachDB strands a flyway-lock row → InsertRowLock / deadlock warnings.
   # LiveReload still works; full restart: stop and run bootRun again. Override: SPRING_DEVTOOLS_RESTART_ENABLED=true
   devtools:
@@ -40,9 +49,9 @@ app:
     audience: ${JWT_AUDIENCE:erp-api}
     access-token-expiration-seconds: ${JWT_ACCESS_EXPIRY:900}
     refresh-token-expiration-seconds: ${JWT_REFRESH_EXPIRY:604800}
+    hmac-secret: ${JWT_SECRET:}
 
 entitybuilder:
   pii:
-    # Must be provided for real environments. For local dev/tests you can set it to a 32+ byte value.
-    key: ${PII_KEY:dev-dev-dev-dev-dev-dev-dev-dev-dev-dev-dev-dev}
+    key: ${PII_KEY:}
 

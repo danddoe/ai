@@ -1,5 +1,7 @@
 package com.erp.coreservice.service;
 
+import com.erp.coreservice.audit.CoreDomainAuditService;
+import com.erp.coreservice.audit.CoreEntityAuditSnapshots;
 import com.erp.coreservice.domain.BusinessUnit;
 import com.erp.coreservice.domain.Company;
 import com.erp.coreservice.domain.PortalHostBinding;
@@ -15,7 +17,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Objects;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -24,15 +26,18 @@ public class PortalHostBindingService {
     private final PortalHostBindingRepository bindingRepository;
     private final CompanyRepository companyRepository;
     private final BusinessUnitRepository businessUnitRepository;
+    private final CoreDomainAuditService coreDomainAuditService;
 
     public PortalHostBindingService(
             PortalHostBindingRepository bindingRepository,
             CompanyRepository companyRepository,
-            BusinessUnitRepository businessUnitRepository
+            BusinessUnitRepository businessUnitRepository,
+            CoreDomainAuditService coreDomainAuditService
     ) {
         this.bindingRepository = bindingRepository;
         this.companyRepository = companyRepository;
         this.businessUnitRepository = businessUnitRepository;
+        this.coreDomainAuditService = coreDomainAuditService;
     }
 
     @Transactional(readOnly = true)
@@ -106,12 +111,15 @@ public class PortalHostBindingService {
         b.setCompanyId(req.getScope() == PortalHostBindingScope.TENANT ? null : req.getCompanyId());
         b.setBuId(req.getScope() == PortalHostBindingScope.BUSINESS_UNIT ? req.getBuId() : null);
         b.setVerifiedAt(req.getVerifiedAt());
-        return bindingRepository.save(b);
+        PortalHostBinding saved = bindingRepository.save(b);
+        coreDomainAuditService.portalHostBindingCreated(tenantId, saved);
+        return saved;
     }
 
     @Transactional
     public PortalHostBinding patch(UUID tenantId, UUID bindingId, PortalDtos.PatchPortalHostBindingRequest req) {
         PortalHostBinding b = get(tenantId, bindingId);
+        Map<String, Object> auditBefore = CoreEntityAuditSnapshots.portalHostBinding(b);
         if (req.getHostname() != null) {
             String hostname = PortalHostnameNormalizer.normalize(req.getHostname());
             if (hostname == null || hostname.isBlank()) {
@@ -136,13 +144,18 @@ public class PortalHostBindingService {
         } else if (req.getVerifiedAt() != null) {
             b.setVerifiedAt(req.getVerifiedAt());
         }
-        return bindingRepository.save(b);
+        PortalHostBinding saved = bindingRepository.save(b);
+        coreDomainAuditService.portalHostBindingUpdated(tenantId, auditBefore, saved);
+        return saved;
     }
 
     @Transactional
     public void delete(UUID tenantId, UUID bindingId) {
         PortalHostBinding b = get(tenantId, bindingId);
+        Map<String, Object> auditBefore = CoreEntityAuditSnapshots.portalHostBinding(b);
+        UUID id = b.getBindingId();
         bindingRepository.delete(b);
+        coreDomainAuditService.portalHostBindingDeleted(tenantId, id, auditBefore);
     }
 
     private void validateScopePayload(UUID tenantId, PortalHostBindingScope scope, UUID companyId, UUID buId) {

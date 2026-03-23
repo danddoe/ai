@@ -14,7 +14,8 @@ public class BootstrapSeedProperties {
     private String tenantName = "AI";
     private String tenantSlug = "ai";
     private String adminEmail = "superadmin@ai.com";
-    private String adminPassword = "SuperAdminDev123!";
+    /** Required when {@code default-bootstrap} runs against an empty DB; set via YAML or {@code SEED_SUPERADMIN_PASSWORD}. */
+    private String adminPassword = "";
     private String adminDisplayName = "Super Admin";
     /** Role name stored in {@code roles.name} for the seeded user */
     private String adminRoleName = "SUPERADMIN";

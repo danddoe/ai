@@ -1,6 +1,15 @@
 spring:
   application:
     name: loans-module
+  cloud:
+    vault:
+      uri: ${VAULT_ADDR:http://127.0.0.1:8200}
+      authentication: TOKEN
+      token: ${VAULT_TOKEN:}
+  config:
+    import:
+      - optional:vault://secret/erp/${SPRING_VAULT_ENV:dev}/common
+      - optional:vault://secret/erp/${SPRING_VAULT_ENV:dev}/loans-module
   datasource:
     url: ${DATABASE_URL:jdbc:postgresql://localhost:26257/defaultdb?sslmode=disable}
     username: ${DATABASE_USER:root}
@@ -28,3 +37,4 @@ app:
   jwt:
     issuer: ${JWT_ISSUER:erp-iam}
     audience: ${JWT_AUDIENCE:erp-api}
+    hmac-secret: ${JWT_SECRET:}

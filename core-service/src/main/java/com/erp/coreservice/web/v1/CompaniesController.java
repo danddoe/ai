@@ -67,6 +67,8 @@ public class CompaniesController {
                 c.getTenantId(),
                 c.getParentCompanyId(),
                 c.getCompanyName(),
+                c.getSlug(),
+                c.getAlias(),
                 c.getOwnershipPct(),
                 c.getBaseCurrency(),
                 c.getDefaultPortalBuId(),

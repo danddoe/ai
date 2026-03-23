@@ -1,5 +1,7 @@
 package com.erp.coreservice.service;
 
+import com.erp.coreservice.audit.CoreDomainAuditService;
+import com.erp.coreservice.audit.CoreEntityAuditSnapshots;
 import com.erp.coreservice.domain.PropertyUnit;
 import com.erp.coreservice.repository.PropertyRepository;
 import com.erp.coreservice.repository.PropertyUnitRepository;
@@ -11,6 +13,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -18,10 +21,16 @@ public class PropertyUnitService {
 
     private final PropertyUnitRepository propertyUnitRepository;
     private final PropertyRepository propertyRepository;
+    private final CoreDomainAuditService coreDomainAuditService;
 
-    public PropertyUnitService(PropertyUnitRepository propertyUnitRepository, PropertyRepository propertyRepository) {
+    public PropertyUnitService(
+            PropertyUnitRepository propertyUnitRepository,
+            PropertyRepository propertyRepository,
+            CoreDomainAuditService coreDomainAuditService
+    ) {
         this.propertyUnitRepository = propertyUnitRepository;
         this.propertyRepository = propertyRepository;
+        this.coreDomainAuditService = coreDomainAuditService;
     }
 
     @Transactional
@@ -34,7 +43,9 @@ public class PropertyUnitService {
         u.setUnitNumber(req.getUnitNumber().trim());
         u.setSquareFootage(req.getSquareFootage());
         u.setStatus(req.getStatus().trim());
-        return propertyUnitRepository.save(u);
+        PropertyUnit saved = propertyUnitRepository.save(u);
+        coreDomainAuditService.propertyUnitCreated(tenantId, saved);
+        return saved;
     }
 
     @Transactional(readOnly = true)
@@ -59,6 +70,7 @@ public class PropertyUnitService {
     @Transactional
     public PropertyUnit patch(UUID tenantId, UUID unitId, OrgDtos.PatchPropertyUnitRequest req) {
         PropertyUnit u = get(tenantId, unitId);
+        Map<String, Object> auditBefore = CoreEntityAuditSnapshots.propertyUnit(u);
         if (req.getUnitNumber() != null && !req.getUnitNumber().isBlank()) {
             u.setUnitNumber(req.getUnitNumber().trim());
         }
@@ -70,6 +82,8 @@ public class PropertyUnitService {
         if (req.getStatus() != null && !req.getStatus().isBlank()) {
             u.setStatus(req.getStatus().trim());
         }
-        return propertyUnitRepository.save(u);
+        PropertyUnit saved = propertyUnitRepository.save(u);
+        coreDomainAuditService.propertyUnitUpdated(tenantId, auditBefore, saved);
+        return saved;
     }
 }

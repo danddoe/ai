@@ -8,7 +8,10 @@ public final class JwtContractConstants {
 
     private JwtContractConstants() {}
 
-    /** Same default string as IAM / entity-builder / global-search when {@code JWT_SECRET} env is unset. */
+    /**
+     * Same default HS256 key as {@code app.jwt.hmac-secret} under Spring profile {@code dev}
+     * (contract tests set the equivalent on module {@code JwtProperties} before constructing {@code JwtService}).
+     */
     public static final String DEFAULT_DEV_SECRET = "erp-iam-dev-secret-key-at-least-256-bits-long-for-hs256";
 
     public static final String DEFAULT_ISSUER = "erp-iam";

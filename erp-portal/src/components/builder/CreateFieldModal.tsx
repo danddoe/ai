@@ -9,6 +9,10 @@ import {
 } from '../../api/schemas';
 import { DocumentNumberGenerationSection } from './DocumentNumberGenerationSection';
 import { buildDocumentNumberGenerationPayload } from './documentNumberGeneration';
+import {
+  applyTextLengthConstraintsToConfig,
+  fieldTypeSupportsTextLengthConstraints,
+} from '../../utils/fieldTextConstraints';
 
 type Props = {
   entityId: string;
@@ -28,7 +32,7 @@ export function CreateFieldModal({
 }: Props) {
   const [name, setName] = useState(suggestedName);
   const [slug, setSlug] = useState(suggestedSlug);
-  const [fieldType, setFieldType] = useState('text');
+  const [fieldType, setFieldType] = useState('string');
   const [required, setRequired] = useState(false);
   const [pii, setPii] = useState(false);
   const [includeInSearch, setIncludeInSearch] = useState(false);
@@ -36,12 +40,15 @@ export function CreateFieldModal({
   const [docPrefix, setDocPrefix] = useState('');
   const [docSequenceWidth, setDocSequenceWidth] = useState(4);
   const [docTimeZone, setDocTimeZone] = useState('UTC');
+  const [minLenStr, setMinLenStr] = useState('');
+  const [maxLenStr, setMaxLenStr] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
   const showDocumentNumberSection = isDocumentNumberFieldType(fieldType);
+  const showTextLengthSection = fieldTypeSupportsTextLengthConstraints(fieldType);
 
-  const mergedConfig = useMemo(() => {
+  const mergedConfigBase = useMemo(() => {
     const base: Record<string, unknown> = {};
     if (includeInSearch) {
       base.isSearchable = true;
@@ -54,7 +61,7 @@ export function CreateFieldModal({
         docTimeZone
       );
     }
-    return Object.keys(base).length > 0 ? base : undefined;
+    return base;
   }, [
     includeInSearch,
     showDocumentNumberSection,
@@ -69,13 +76,22 @@ export function CreateFieldModal({
     setError(null);
     setPending(true);
     try {
+      const config: Record<string, unknown> = { ...mergedConfigBase };
+      if (showTextLengthSection) {
+        const lenErr = applyTextLengthConstraintsToConfig(config, minLenStr, maxLenStr);
+        if (lenErr) {
+          setError(lenErr);
+          setPending(false);
+          return;
+        }
+      }
       const f = await createField(entityId, {
         name: name.trim(),
         slug: slug.trim(),
         fieldType,
         required,
         pii,
-        config: mergedConfig,
+        config: Object.keys(config).length > 0 ? config : undefined,
       });
       onCreated(f);
       onClose();
@@ -119,6 +135,7 @@ export function CreateFieldModal({
         <label className="field-label">
           Field type
           <select className="input" value={fieldType} onChange={(e) => setFieldType(e.target.value)}>
+            <option value="string">string</option>
             <option value="text">text</option>
             <option value="number">number</option>
             <option value="boolean">boolean</option>
@@ -145,6 +162,42 @@ export function CreateFieldModal({
           />
           Include in global search / lookups
         </label>
+
+        <p className="builder-muted" style={{ fontSize: '0.8125rem', margin: 0 }}>
+          <strong>Width on the form</strong> is set after you add the field: select it on the layout →{' '}
+          <strong>Presentation</strong> → <strong>Width</strong> (full / half / third).
+        </p>
+
+        {showTextLengthSection && (
+          <fieldset style={{ border: '1px solid #e4e4e7', borderRadius: 8, padding: '10px 12px', margin: 0 }}>
+            <legend style={{ fontSize: '0.8125rem', padding: '0 6px' }}>Text length (optional)</legend>
+            <p className="builder-muted" style={{ fontSize: '0.75rem', margin: '0 0 8px' }}>
+              Enforced in the record form before save. Leave blank for no limit.
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <label className="field-label" style={{ margin: 0 }}>
+                Min characters
+                <input
+                  className="input"
+                  inputMode="numeric"
+                  value={minLenStr}
+                  onChange={(e) => setMinLenStr(e.target.value.replace(/\D/g, ''))}
+                  placeholder="—"
+                />
+              </label>
+              <label className="field-label" style={{ margin: 0 }}>
+                Max characters
+                <input
+                  className="input"
+                  inputMode="numeric"
+                  value={maxLenStr}
+                  onChange={(e) => setMaxLenStr(e.target.value.replace(/\D/g, ''))}
+                  placeholder="—"
+                />
+              </label>
+            </div>
+          </fieldset>
+        )}
 
         {showDocumentNumberSection && (
           <DocumentNumberGenerationSection

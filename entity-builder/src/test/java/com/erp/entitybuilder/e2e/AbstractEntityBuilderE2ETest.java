@@ -34,7 +34,6 @@ public abstract class AbstractEntityBuilderE2ETest {
 
     protected static final String DEFAULT_HOST = "localhost";
     protected static final int DEFAULT_PORT = 26257;
-    // Must match entity-builder default when JWT_SECRET env is not set
     protected static final String JWT_SECRET = "erp-iam-dev-secret-key-at-least-256-bits-long-for-hs256";
 
     protected String host;
@@ -74,6 +73,7 @@ public abstract class AbstractEntityBuilderE2ETest {
                         "--spring.datasource.username=root",
                         "--spring.datasource.password=",
                         "--spring.flyway.enabled=true",
+                        "--app.jwt.hmac-secret=" + JWT_SECRET,
                         "--entitybuilder.pii.key=dev-dev-dev-dev-dev-dev-dev-dev-dev-dev-dev-dev"
                 );
 

@@ -1,6 +1,15 @@
 spring:
   application:
     name: global-search
+  cloud:
+    vault:
+      uri: ${VAULT_ADDR:http://127.0.0.1:8200}
+      authentication: TOKEN
+      token: ${VAULT_TOKEN:}
+  config:
+    import:
+      - optional:vault://secret/erp/${SPRING_VAULT_ENV:dev}/common
+      - optional:vault://secret/erp/${SPRING_VAULT_ENV:dev}/global-search
 
 server:
   port: ${SERVER_PORT:8082}
@@ -9,6 +18,7 @@ app:
   jwt:
     issuer: ${JWT_ISSUER:erp-iam}
     audience: ${JWT_AUDIENCE:erp-api}
+    hmac-secret: ${JWT_SECRET:}
 
 global-search:
   iam-base-url: ${IAM_URL:http://localhost:8080}

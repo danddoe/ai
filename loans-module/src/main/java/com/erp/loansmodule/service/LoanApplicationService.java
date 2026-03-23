@@ -1,10 +1,9 @@
 package com.erp.loansmodule.service;
 
-import com.erp.audit.AuditActions;
 import com.erp.audit.AuditEvent;
 import com.erp.audit.AuditLogWriter;
 import com.erp.audit.AuditOperations;
-import com.erp.audit.AuditResourceTypes;
+import com.erp.audit.AuditableResourceSupport;
 import com.erp.loansmodule.domain.LoanApplication;
 import com.erp.loansmodule.repository.LoanApplicationRepository;
 import com.erp.loansmodule.web.ApiException;
@@ -61,8 +60,8 @@ public class LoanApplicationService {
                     .actorId(userId)
                     .sourceService(AUDIT_SOURCE_SERVICE)
                     .operation(AuditOperations.CREATE)
-                    .action(AuditActions.LOAN_APPLICATION_CREATE)
-                    .resourceType(AuditResourceTypes.LOAN_APPLICATION)
+                    .action(AuditableResourceSupport.action(LoanApplication.class, "create"))
+                    .resourceType(AuditableResourceSupport.resourceType(LoanApplication.class))
                     .resourceId(saved.getId())
                     .correlationId(correlationId)
                     .putPayload("changes", changes)
@@ -112,8 +111,8 @@ public class LoanApplicationService {
                         .actorId(userId)
                         .sourceService(AUDIT_SOURCE_SERVICE)
                         .operation(AuditOperations.UPDATE)
-                        .action(AuditActions.LOAN_APPLICATION_PATCH)
-                        .resourceType(AuditResourceTypes.LOAN_APPLICATION)
+                        .action(AuditableResourceSupport.action(LoanApplication.class, "patch"))
+                        .resourceType(AuditableResourceSupport.resourceType(LoanApplication.class))
                         .resourceId(saved.getId())
                         .correlationId(correlationId)
                         .putPayload("changes", changes)

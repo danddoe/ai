@@ -2,6 +2,7 @@ package com.erp.iam.web;
 
 import com.erp.iam.config.AuthCookieProperties;
 import com.erp.iam.config.JwtProperties;
+import com.erp.iam.service.AuthRefreshRetryService;
 import com.erp.iam.service.AuthService;
 import com.erp.iam.service.AuthService.AuthException;
 import com.erp.iam.service.AuthService.TokenResult;
@@ -23,11 +24,16 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
 
     private final AuthService authService;
+    private final AuthRefreshRetryService authRefreshRetryService;
     private final AuthCookieProperties authCookieProperties;
     private final JwtProperties jwtProperties;
 
-    public AuthController(AuthService authService, AuthCookieProperties authCookieProperties, JwtProperties jwtProperties) {
+    public AuthController(AuthService authService,
+                            AuthRefreshRetryService authRefreshRetryService,
+                            AuthCookieProperties authCookieProperties,
+                            JwtProperties jwtProperties) {
         this.authService = authService;
+        this.authRefreshRetryService = authRefreshRetryService;
         this.authCookieProperties = authCookieProperties;
         this.jwtProperties = jwtProperties;
     }
@@ -64,7 +70,7 @@ public class AuthController {
         if (refreshValue == null || refreshValue.isBlank()) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
         }
-        TokenResult result = authService.refresh(refreshValue);
+        TokenResult result = authRefreshRetryService.refresh(refreshValue);
         String refreshForJson = authCookieProperties.isRefreshTokenInCookie() ? null : result.getRefreshToken();
         TokenResponse response = new TokenResponse(
                 result.getAccessToken(),

@@ -49,13 +49,13 @@ Open `http://localhost:5173`. Sign in with tenant slug, email, password, then us
 
 **Shell:** All authenticated routes use [`AppShell`](src/layouts/AppShell.tsx): sticky header (logo, **global search** Ctrl+K / ⌘K, log out), collapsible **IAM-driven sidebar** (`GET /v1/navigation`), and main content. On form-builder URLs the **module sidebar is hidden** and a “Form builder” badge appears; the builder keeps its own three-panel tool UI.
 
-If IAM was started with profile `default-bootstrap` on an empty DB, use tenant **`ai`**, **`superadmin@ai.com`**, password **`SuperAdminDev123!`** (unless you set `SEED_SUPERADMIN_PASSWORD`).
+If IAM was started with profile `default-bootstrap` on an empty DB, use tenant **`ai`** and **`superadmin@ai.com`**; the password is whatever you configured via **`SEED_SUPERADMIN_PASSWORD`** / Vault (no default in this repo).
 
 `VITE_API_BASE_URL` defaults to `http://localhost:8000` in `.env.development`.
 
 ### `401 Unauthorized` on API calls
 
-- **Same `JWT_SECRET`** (and usually `JWT_ISSUER` / `JWT_AUDIENCE`) on **IAM** and **entity-builder**, or both use defaults.
+- **Same `JWT_SECRET` / `app.jwt.hmac-secret`** (and usually `JWT_ISSUER` / `JWT_AUDIENCE`) on **IAM** and **entity-builder**, configured explicitly or via Vault.
 - **Log in again** after a full reload: the access token is memory-only; refresh relies on the httpOnly cookie from login.
 - Confirm **api-gateway** (8000), **IAM** (8080), **entity-builder** (8081) are running.
 
@@ -81,7 +81,7 @@ End-to-end checks against **real** services: portal → gateway → IAM + **glob
    npm run test:e2e
    ```
 
-Optional env: `PORTAL_BASE_URL`, `E2E_TENANT_SLUG`, `E2E_USER_EMAIL`, `E2E_USER_PASSWORD` (defaults match the seeded superadmin in this README).
+Required for E2E: **`E2E_USER_PASSWORD`** (must match the IAM user you log in as—e.g. from Vault via `vault/linux/e2e-env.sh`). Optional: `PORTAL_BASE_URL`, `E2E_TENANT_SLUG`, `E2E_USER_EMAIL`.
 
 - `npm run test:e2e:headed` — visible browser  
 - `npm run test:e2e:ui` — Playwright UI mode  

@@ -11,6 +11,7 @@ import {
   apiBaseUrl,
   setAccessToken as setMemToken,
   setOnAccessTokenRefreshed,
+  setOnSessionInvalidated,
 } from '../api/client';
 import { clearPortalNavigationCache } from '../hooks/usePortalNavigation';
 import { clearLegacyStoredTokens } from './tokenStorage';
@@ -104,6 +105,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setMemToken(t);
     setAccessTokenState(t);
   }, []);
+
+  const invalidateLocalSession = useCallback(() => {
+    clearLegacyStoredTokens();
+    clearPortalNavigationCache();
+    setBoth(null);
+  }, [setBoth]);
+
+  useEffect(() => {
+    setOnSessionInvalidated(() => invalidateLocalSession);
+    return () => setOnSessionInvalidated(null);
+  }, [invalidateLocalSession]);
 
   useEffect(() => {
     let cancelled = false;

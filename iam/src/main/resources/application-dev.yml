@@ -1,0 +1,7 @@
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+# No secret defaults in source. For local dev set JWT_SECRET, SEED_SUPERADMIN_PASSWORD, PII_KEY (entity-builder),
+# DATABASE_*, etc., via environment or Vault — see vault/README.md.

@@ -1,5 +1,7 @@
 package com.erp.coreservice.service;
 
+import com.erp.coreservice.audit.CoreDomainAuditService;
+import com.erp.coreservice.audit.CoreEntityAuditSnapshots;
 import com.erp.coreservice.domain.Location;
 import com.erp.coreservice.repository.CountryRepository;
 import com.erp.coreservice.repository.LocationRepository;
@@ -12,6 +14,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -20,15 +23,18 @@ public class LocationService {
     private final LocationRepository locationRepository;
     private final CountryRepository countryRepository;
     private final RegionRepository regionRepository;
+    private final CoreDomainAuditService coreDomainAuditService;
 
     public LocationService(
             LocationRepository locationRepository,
             CountryRepository countryRepository,
-            RegionRepository regionRepository
+            RegionRepository regionRepository,
+            CoreDomainAuditService coreDomainAuditService
     ) {
         this.locationRepository = locationRepository;
         this.countryRepository = countryRepository;
         this.regionRepository = regionRepository;
+        this.coreDomainAuditService = coreDomainAuditService;
     }
 
     @Transactional
@@ -52,7 +58,9 @@ public class LocationService {
         loc.setPostalCode(trimOrNull(req.getPostalCode()));
         loc.setCountryCode(cc);
         loc.setRegionId(req.getRegionId());
-        return locationRepository.save(loc);
+        Location saved = locationRepository.save(loc);
+        coreDomainAuditService.locationCreated(tenantId, saved);
+        return saved;
     }
 
     @Transactional(readOnly = true)
@@ -71,6 +79,7 @@ public class LocationService {
     @Transactional
     public Location patch(UUID tenantId, UUID locationId, OrgDtos.PatchLocationRequest req) {
         Location loc = get(tenantId, locationId);
+        Map<String, Object> auditBefore = CoreEntityAuditSnapshots.location(loc);
         if (req.getLocationName() != null && !req.getLocationName().isBlank()) {
             loc.setLocationName(req.getLocationName().trim());
         }
@@ -102,7 +111,9 @@ public class LocationService {
                     .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "bad_request", "Region not found"));
             loc.setRegionId(req.getRegionId());
         }
-        return locationRepository.save(loc);
+        Location saved = locationRepository.save(loc);
+        coreDomainAuditService.locationUpdated(tenantId, auditBefore, saved);
+        return saved;
     }
 
     private static String trimOrNull(String s) {

@@ -35,7 +35,7 @@ public abstract class AbstractCoreServiceE2ETest {
 
     protected static final String DEFAULT_HOST = "localhost";
     protected static final int DEFAULT_PORT = 26257;
-    /** Must match core-service JwtService default when JWT_SECRET env is not set */
+    /** Must match core-service JwtService signing key for this test JVM */
     protected static final String JWT_SECRET = "erp-iam-dev-secret-key-at-least-256-bits-long-for-hs256";
 
     /** Permissions for exercising every master-data REST surface in one tenant. */
@@ -91,7 +91,8 @@ public abstract class AbstractCoreServiceE2ETest {
                         "--spring.datasource.url=" + testDbJdbcUrl,
                         "--spring.datasource.username=root",
                         "--spring.datasource.password=",
-                        "--spring.flyway.enabled=true"
+                        "--spring.flyway.enabled=true",
+                        "--app.jwt.hmac-secret=" + JWT_SECRET
                 );
 
         int httpPort = ((WebServerApplicationContext) appContext).getWebServer().getPort();

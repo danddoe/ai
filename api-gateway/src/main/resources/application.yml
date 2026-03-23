@@ -7,7 +7,15 @@ gateway:
 spring:
   application:
     name: api-gateway
+  config:
+    import:
+      - optional:vault://secret/erp/${SPRING_VAULT_ENV:dev}/common
+      - optional:vault://secret/erp/${SPRING_VAULT_ENV:dev}/api-gateway
   cloud:
+    vault:
+      uri: ${VAULT_ADDR:http://127.0.0.1:8200}
+      authentication: TOKEN
+      token: ${VAULT_TOKEN:}
     gateway:
       httpclient:
         connect-timeout: 5000

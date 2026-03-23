@@ -10,6 +10,9 @@ build/
 # CockroachDB local data
 cockroachdb/data/
 
+# HashiCorp Vault local file storage (persistent dev)
+vault/file-data/
+
 # Logs
 *.log
 

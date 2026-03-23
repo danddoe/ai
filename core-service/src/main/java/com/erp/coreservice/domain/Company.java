@@ -1,5 +1,6 @@
 package com.erp.coreservice.domain;
 
+import com.erp.audit.AuditableResource;
 import jakarta.persistence.*;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
@@ -10,6 +11,7 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "companies")
+@AuditableResource(path = "core.company")
 public class Company {
 
     @Id

@@ -1,5 +1,7 @@
 package com.erp.coreservice.service;
 
+import com.erp.coreservice.audit.CoreDomainAuditService;
+import com.erp.coreservice.audit.CoreEntityAuditSnapshots;
 import com.erp.coreservice.domain.Region;
 import com.erp.coreservice.repository.RegionRepository;
 import com.erp.coreservice.web.ApiException;
@@ -10,15 +12,18 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Map;
 import java.util.UUID;
 
 @Service
 public class RegionService {
 
     private final RegionRepository regionRepository;
+    private final CoreDomainAuditService coreDomainAuditService;
 
-    public RegionService(RegionRepository regionRepository) {
+    public RegionService(RegionRepository regionRepository, CoreDomainAuditService coreDomainAuditService) {
         this.regionRepository = regionRepository;
+        this.coreDomainAuditService = coreDomainAuditService;
     }
 
     @Transactional
@@ -35,6 +40,7 @@ public class RegionService {
         Region saved = regionRepository.save(r);
         HierarchyCycleChecker.assertNoRegionParentCycle(
                 regionRepository, tenantId, saved.getRegionId(), saved.getParentRegionId());
+        coreDomainAuditService.regionCreated(tenantId, saved);
         return saved;
     }
 
@@ -54,6 +60,7 @@ public class RegionService {
     @Transactional
     public Region patch(UUID tenantId, UUID regionId, OrgDtos.PatchRegionRequest req) {
         Region r = get(tenantId, regionId);
+        Map<String, Object> auditBefore = CoreEntityAuditSnapshots.region(r);
         if (req.isClearParentRegion()) {
             r.setParentRegionId(null);
         } else if (req.getParentRegionId() != null) {
@@ -68,6 +75,8 @@ public class RegionService {
         if (req.getRegionName() != null && !req.getRegionName().isBlank()) {
             r.setRegionName(req.getRegionName().trim());
         }
-        return regionRepository.save(r);
+        Region saved = regionRepository.save(r);
+        coreDomainAuditService.regionUpdated(tenantId, auditBefore, saved);
+        return saved;
     }
 }

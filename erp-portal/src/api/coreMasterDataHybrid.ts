@@ -10,9 +10,13 @@ const HYBRID_SPECS: Record<
   company: {
     pathSegment: 'companies',
     idJsonKey: 'companyId',
-    createKeys: new Set(['companyName', 'parentCompanyId', 'ownershipPct', 'baseCurrency']),
+    createKeys: new Set(['companyName', 'parentCompanyId', 'ownershipPct', 'baseCurrency', 'slug', 'alias']),
     patchKeys: new Set([
       'companyName',
+      'slug',
+      'alias',
+      'clearSlug',
+      'clearAlias',
       'baseCurrency',
       'parentCompanyId',
       'clearParentCompany',
@@ -149,6 +153,15 @@ function buildPatchBody(entitySlug: string, fields: EntityFieldDto[], values: Re
   const body: Record<string, unknown> = {};
   for (const [k, v] of coreFieldToJsonEntries(fields, values)) {
     if (!spec.patchKeys.has(k)) continue;
+    if (k === 'alias' || k === 'slug') {
+      if (v === null || v === undefined || (typeof v === 'string' && v.trim() === '')) {
+        if (k === 'alias') body.clearAlias = true;
+        else body.clearSlug = true;
+      } else {
+        body[k] = typeof v === 'string' ? v.trim() : v;
+      }
+      continue;
+    }
     if (k.endsWith('Id') || k === 'defaultPortalBuId') {
       const id = parseUuid(v);
       if (id) {

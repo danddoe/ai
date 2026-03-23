@@ -15,8 +15,8 @@ import java.util.List;
  * <p>
  * Activate: {@code --spring.profiles.active=default-bootstrap}
  * <p>
- * Login (defaults): tenant slug {@code ai}, email {@code superadmin@ai.com}, password from
- * {@code app.bootstrap.admin-password} / env {@code SEED_SUPERADMIN_PASSWORD}.
+ * Login identity: tenant slug / email from {@link BootstrapSeedProperties}; password must be set via
+ * {@code app.bootstrap.admin-password} or env {@code SEED_SUPERADMIN_PASSWORD} (no default in code).
  */
 @Component
 @Profile("default-bootstrap")
@@ -36,6 +36,10 @@ public class BootstrapData {
         return args -> {
             if (tenantRepository.count() > 0) {
                 return;
+            }
+            if (seed.getAdminPassword() == null || seed.getAdminPassword().isBlank()) {
+                throw new IllegalStateException(
+                        "default-bootstrap requires app.bootstrap.admin-password or SEED_SUPERADMIN_PASSWORD when the database has no tenants");
             }
 
             Tenant tenant = new Tenant();

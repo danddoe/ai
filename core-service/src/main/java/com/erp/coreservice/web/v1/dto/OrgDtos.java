@@ -21,6 +21,8 @@ public class OrgDtos {
             UUID tenantId,
             UUID parentCompanyId,
             String companyName,
+            String slug,
+            String alias,
             BigDecimal ownershipPct,
             String baseCurrency,
             UUID defaultPortalBuId,
@@ -41,6 +43,12 @@ public class OrgDtos {
         @NotBlank
         @Size(min = 3, max = 3)
         private String baseCurrency;
+
+        @Size(max = 128)
+        private String slug;
+
+        @Size(max = 255)
+        private String alias;
 
         public String getCompanyName() {
             return companyName;
@@ -73,11 +81,33 @@ public class OrgDtos {
         public void setBaseCurrency(String baseCurrency) {
             this.baseCurrency = baseCurrency;
         }
+
+        public String getSlug() {
+            return slug;
+        }
+
+        public void setSlug(String slug) {
+            this.slug = slug;
+        }
+
+        public String getAlias() {
+            return alias;
+        }
+
+        public void setAlias(String alias) {
+            this.alias = alias;
+        }
     }
 
     public static class PatchCompanyRequest {
         @Size(max = 255)
         private String companyName;
+
+        @Size(max = 128)
+        private String slug;
+
+        @Size(max = 255)
+        private String alias;
 
         @Size(min = 3, max = 3)
         private String baseCurrency;
@@ -95,12 +125,32 @@ public class OrgDtos {
 
         private boolean clearDefaultPortalBu;
 
+        private boolean clearSlug;
+
+        private boolean clearAlias;
+
         public String getCompanyName() {
             return companyName;
         }
 
         public void setCompanyName(String companyName) {
             this.companyName = companyName;
+        }
+
+        public String getSlug() {
+            return slug;
+        }
+
+        public void setSlug(String slug) {
+            this.slug = slug;
+        }
+
+        public String getAlias() {
+            return alias;
+        }
+
+        public void setAlias(String alias) {
+            this.alias = alias;
         }
 
         public String getBaseCurrency() {
@@ -157,6 +207,22 @@ public class OrgDtos {
 
         public void setClearDefaultPortalBu(boolean clearDefaultPortalBu) {
             this.clearDefaultPortalBu = clearDefaultPortalBu;
+        }
+
+        public boolean isClearSlug() {
+            return clearSlug;
+        }
+
+        public void setClearSlug(boolean clearSlug) {
+            this.clearSlug = clearSlug;
+        }
+
+        public boolean isClearAlias() {
+            return clearAlias;
+        }
+
+        public void setClearAlias(boolean clearAlias) {
+            this.clearAlias = clearAlias;
         }
     }
 

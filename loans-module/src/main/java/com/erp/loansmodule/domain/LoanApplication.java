@@ -1,5 +1,6 @@
 package com.erp.loansmodule.domain;
 
+import com.erp.audit.AuditableResource;
 import jakarta.persistence.*;
 
 import java.math.BigDecimal;
@@ -8,6 +9,7 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "loan_applications")
+@AuditableResource(path = "loan_application")
 public class LoanApplication {
 
     @Id

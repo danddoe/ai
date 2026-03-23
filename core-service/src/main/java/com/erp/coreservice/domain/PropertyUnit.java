@@ -1,5 +1,6 @@
 package com.erp.coreservice.domain;
 
+import com.erp.audit.AuditableResource;
 import jakarta.persistence.*;
 
 import java.math.BigDecimal;
@@ -8,6 +9,7 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "property_units")
+@AuditableResource(path = "core.property_unit")
 public class PropertyUnit {
 
     @Id

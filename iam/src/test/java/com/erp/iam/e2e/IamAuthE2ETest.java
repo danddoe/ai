@@ -36,7 +36,7 @@ class IamAuthE2ETest extends AbstractIamE2ETest {
 
         userId = UUID.randomUUID();
         email = "user-" + userId.toString().substring(0, 8) + "@example.com";
-        password = "P@ssw0rd-123";
+        password = "e2e-" + UUID.randomUUID() + "-Pw1";
         Timestamp now = Timestamp.from(Instant.now());
 
         jdbcTemplate.update(

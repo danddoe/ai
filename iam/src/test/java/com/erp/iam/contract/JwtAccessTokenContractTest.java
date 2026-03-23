@@ -20,8 +20,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class JwtAccessTokenContractTest {
 
-    private final JwtProperties properties = new JwtProperties();
-    private final JwtService jwtService = new JwtService(properties);
+    private JwtProperties properties;
+    private JwtService jwtService;
 
     @BeforeEach
     void assumeCompatibleJwtSecret() {
@@ -30,6 +30,9 @@ class JwtAccessTokenContractTest {
                 s == null || s.isBlank() || JwtContractConstants.DEFAULT_DEV_SECRET.equals(s),
                 "JWT_SECRET must be unset, blank, or equal to the dev default (see JwtContractConstants)"
         );
+        properties = new JwtProperties();
+        properties.setHmacSecret((s == null || s.isBlank()) ? JwtContractConstants.DEFAULT_DEV_SECRET : s);
+        jwtService = new JwtService(properties);
     }
 
     @Test

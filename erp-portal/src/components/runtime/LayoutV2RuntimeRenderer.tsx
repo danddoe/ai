@@ -1,7 +1,11 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useId, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { isDocumentNumberFieldType, type EntityFieldDto } from '../../api/schemas';
 import type { LayoutItem, LayoutItemAction, LayoutRegion, LayoutRow } from '../../types/formLayout';
+import {
+  fieldTypeSupportsTextLengthConstraints,
+  readLengthConstraintFromConfig,
+} from '../../utils/fieldTextConstraints';
 import { defaultPresentation, isActionItem, isSafeActionHref, resolveLayoutItemField } from '../../utils/layoutV2';
 
 type Props = {
@@ -16,6 +20,8 @@ type Props = {
   useTabGroups: boolean;
   /** Wired on record entry for layout items with `kind: "action"` (save / cancel). */
   onLayoutAction?: (action: 'save' | 'cancel') => void;
+  /** Inline validation messages keyed by field slug (shown under the control). */
+  fieldErrors?: Record<string, string>;
 };
 
 function collectTabGroups(regions: LayoutRegion[]): { kind: 'single'; region: LayoutRegion } | { kind: 'tabs'; groupId: string | null; regions: LayoutRegion[] }[] {
@@ -44,6 +50,14 @@ function collectTabGroups(regions: LayoutRegion[]): { kind: 'single'; region: La
     }
   }
   return out;
+}
+
+/** Matches form builder Presentation → Width (full / half / third). */
+function presentationInputBoxStyle(presWidth: string | undefined): Pick<CSSProperties, 'maxWidth' | 'width'> {
+  const w = (presWidth ?? 'full').trim();
+  if (w === 'half') return { maxWidth: '20rem', width: '100%' };
+  if (w === 'third') return { maxWidth: '14rem', width: '100%' };
+  return { width: '100%' };
 }
 
 function actionButtonClass(variant: LayoutItemAction['variant'], action: LayoutItemAction['action']): string {
@@ -134,6 +148,7 @@ function FieldControl({
   disabled,
   canPiiRead,
   onChange,
+  fieldError,
 }: {
   item: LayoutItem;
   field: EntityFieldDto;
@@ -141,7 +156,10 @@ function FieldControl({
   disabled: boolean;
   canPiiRead: boolean;
   onChange: (slug: string, v: unknown) => void;
+  fieldError?: string;
 }) {
+  const inputId = useId();
+  const errId = useId();
   const pres = item.presentation ?? defaultPresentation();
   if (pres.hidden) return null;
 
@@ -151,20 +169,43 @@ function FieldControl({
   const piiLocked = field.pii && !canPiiRead;
   const ro = disabled || pres.readOnly || piiLocked;
   const ft = (field.fieldType || 'text').toLowerCase();
+  const boxStyle = presentationInputBoxStyle(pres.width);
+  const cfg = (field.config ?? undefined) as Record<string, unknown> | undefined;
+  const maxLen = fieldTypeSupportsTextLengthConstraints(ft) ? readLengthConstraintFromConfig(cfg, 'maxLength') : undefined;
+  const minLen = fieldTypeSupportsTextLengthConstraints(ft) ? readLengthConstraintFromConfig(cfg, 'minLength') : undefined;
+  const invalid = Boolean(fieldError);
+  const ariaErr = invalid ? { 'aria-invalid': true as const, 'aria-describedby': errId } : {};
+
+  const errorNode =
+    fieldError ? (
+      <p id={errId} className="runtime-field-error" role="alert">
+        {fieldError}
+      </p>
+    ) : null;
 
   let control: ReactNode;
   if (piiLocked) {
     control = (
-      <input className="input" type="text" value="—" readOnly disabled title="PII hidden (missing entity_builder:pii:read)" />
+      <input
+        className="input"
+        type="text"
+        value="—"
+        readOnly
+        disabled
+        title="PII hidden (missing entity_builder:pii:read)"
+        style={boxStyle}
+      />
     );
   } else if (ft === 'boolean') {
     const checked = value === true || value === 'true';
     control = (
       <label className="form-check">
         <input
+          id={inputId}
           type="checkbox"
           checked={checked}
           disabled={ro}
+          {...ariaErr}
           onChange={(e) => onChange(slug, e.target.checked)}
         />
         <span>{label}</span>
@@ -173,6 +214,7 @@ function FieldControl({
     return (
       <div className="runtime-field" key={item.id}>
         {control}
+        {errorNode}
         {pres.helpText ? <p className="builder-muted">{pres.helpText}</p> : null}
       </div>
     );
@@ -181,26 +223,32 @@ function FieldControl({
     const formLocked = disabled || piiLocked || pres.readOnly;
     control = (
       <input
-        className="input"
+        id={inputId}
+        className={`input${invalid ? ' input-state-error' : ''}`}
         type="text"
         readOnly
         disabled={formLocked}
         value={str}
         placeholder={str ? '' : 'Assigned when the record is saved'}
         title="Stored on the record as businessDocumentNumber; not edited as EAV."
+        style={boxStyle}
+        {...ariaErr}
       />
     );
   } else if (ft === 'number') {
     const str = value === null || value === undefined ? '' : String(value);
     control = (
       <input
-        className="form-input"
+        id={inputId}
+        className={`form-input${invalid ? ' input-state-error' : ''}`}
         type="text"
         inputMode="decimal"
         placeholder={pres.placeholder || ''}
         value={str}
         readOnly={ro}
         disabled={ro}
+        style={boxStyle}
+        {...ariaErr}
         onChange={(e) => onChange(slug, e.target.value === '' ? null : e.target.value)}
       />
     );
@@ -208,12 +256,17 @@ function FieldControl({
     const str = value === null || value === undefined ? '' : String(value);
     control = (
       <input
-        className="input"
+        id={inputId}
+        className={`input${invalid ? ' input-state-error' : ''}`}
         type="text"
         placeholder="ISO-8601 instant, e.g. 2024-01-15T12:00:00Z"
         value={str}
         readOnly={ro}
         disabled={ro}
+        style={boxStyle}
+        minLength={minLen}
+        maxLength={maxLen}
+        {...ariaErr}
         onChange={(e) => onChange(slug, e.target.value === '' ? null : e.target.value)}
       />
     );
@@ -221,12 +274,17 @@ function FieldControl({
     const str = value === null || value === undefined ? '' : String(value);
     control = (
       <input
-        className="input"
+        id={inputId}
+        className={`input${invalid ? ' input-state-error' : ''}`}
         type="text"
         readOnly={ro}
         disabled={ro}
         title="Reference picker not implemented; paste record UUID"
         value={str}
+        style={boxStyle}
+        minLength={minLen}
+        maxLength={maxLen}
+        {...ariaErr}
         onChange={(e) => onChange(slug, e.target.value === '' ? null : e.target.value)}
       />
     );
@@ -234,12 +292,17 @@ function FieldControl({
     const str = value === null || value === undefined ? '' : String(value);
     control = (
       <input
-        className="input"
+        id={inputId}
+        className={`input${invalid ? ' input-state-error' : ''}`}
         type="text"
         placeholder={pres.placeholder || ''}
         value={str}
         readOnly={ro}
         disabled={ro}
+        style={boxStyle}
+        minLength={minLen}
+        maxLength={maxLen}
+        {...ariaErr}
         onChange={(e) => onChange(slug, e.target.value === '' ? null : e.target.value)}
       />
     );
@@ -248,12 +311,13 @@ function FieldControl({
   return (
     <div className="runtime-field" key={item.id}>
       {ft !== 'boolean' ? (
-        <label className="field-label">
+        <label className="field-label" htmlFor={inputId}>
           {label}
           {field.required ? <span className="text-error"> *</span> : null}
         </label>
       ) : null}
       {control}
+      {errorNode}
       {pres.helpText ? <p className="builder-muted">{pres.helpText}</p> : null}
     </div>
   );
@@ -266,7 +330,8 @@ function renderRow(
   onChange: (slug: string, v: unknown) => void,
   disabled: boolean,
   canPiiRead: boolean,
-  onLayoutAction?: (action: 'save' | 'cancel') => void
+  onLayoutAction: ((action: 'save' | 'cancel') => void) | undefined,
+  fieldErrors: Record<string, string> | undefined
 ) {
   return (
     <div className="runtime-row" key={row.id}>
@@ -301,6 +366,7 @@ function renderRow(
                 disabled={disabled}
                 canPiiRead={canPiiRead}
                 onChange={onChange}
+                fieldError={fieldErrors?.[field.slug]}
               />
             );
           })}
@@ -318,6 +384,7 @@ function RegionBlock({
   disabled,
   canPiiRead,
   onLayoutAction,
+  fieldErrors,
 }: {
   region: LayoutRegion;
   fields: EntityFieldDto[];
@@ -326,6 +393,7 @@ function RegionBlock({
   disabled: boolean;
   canPiiRead: boolean;
   onLayoutAction?: (action: 'save' | 'cancel') => void;
+  fieldErrors?: Record<string, string>;
 }) {
   const relPlaceholder = region.binding?.kind === 'entity_relationship';
   return (
@@ -335,7 +403,7 @@ function RegionBlock({
         <p className="builder-muted">Line items / related records are not available in this runtime yet.</p>
       ) : (
         region.rows.map((row) =>
-          renderRow(row, fields, values, onChange, disabled, canPiiRead, onLayoutAction)
+          renderRow(row, fields, values, onChange, disabled, canPiiRead, onLayoutAction, fieldErrors)
         )
       )}
     </section>
@@ -350,6 +418,7 @@ function TabGroupBlock({
   disabled,
   canPiiRead,
   onLayoutAction,
+  fieldErrors,
 }: {
   regions: LayoutRegion[];
   fields: EntityFieldDto[];
@@ -358,6 +427,7 @@ function TabGroupBlock({
   disabled: boolean;
   canPiiRead: boolean;
   onLayoutAction?: (action: 'save' | 'cancel') => void;
+  fieldErrors?: Record<string, string>;
 }) {
   const [idx, setIdx] = useState(0);
   const safe = Math.min(idx, Math.max(0, regions.length - 1));
@@ -388,6 +458,7 @@ function TabGroupBlock({
           disabled={disabled}
           canPiiRead={canPiiRead}
           onLayoutAction={onLayoutAction}
+          fieldErrors={fieldErrors}
         />
       ) : null}
     </div>
@@ -403,6 +474,7 @@ export function LayoutV2RuntimeRenderer({
   canPiiRead,
   useTabGroups,
   onLayoutAction,
+  fieldErrors,
 }: Props) {
   const blocks = useMemo(() => {
     if (!useTabGroups) {
@@ -424,6 +496,7 @@ export function LayoutV2RuntimeRenderer({
             disabled={disabled}
             canPiiRead={canPiiRead}
             onLayoutAction={onLayoutAction}
+            fieldErrors={fieldErrors}
           />
         ) : (
           <TabGroupBlock
@@ -435,6 +508,7 @@ export function LayoutV2RuntimeRenderer({
             disabled={disabled}
             canPiiRead={canPiiRead}
             onLayoutAction={onLayoutAction}
+            fieldErrors={fieldErrors}
           />
         )
       )}
@@ -442,14 +516,22 @@ export function LayoutV2RuntimeRenderer({
   );
 }
 
-/** Collect slugs for required fields that appear in these regions and are empty in `values`. */
-export function validateRequiredInRegions(
+function fieldDisplayLabel(field: EntityFieldDto): string {
+  return field.labelOverride?.trim() || field.name;
+}
+
+/**
+ * Required-field and text-length validation for visible layout regions.
+ * Returns a map of field slug → message for inline display under inputs.
+ */
+export function buildInlineFieldErrorsForRegions(
   regions: LayoutRegion[],
   fields: EntityFieldDto[],
   values: Record<string, unknown>
-): string[] {
-  const missing: string[] = [];
-  const seen = new Set<string>();
+): Record<string, string> {
+  const errors: Record<string, string> = {};
+
+  const seenRequired = new Set<string>();
   for (const region of regions) {
     for (const row of region.rows) {
       for (const col of row.columns) {
@@ -460,15 +542,45 @@ export function validateRequiredInRegions(
           if (isDocumentNumberFieldType(field.fieldType)) continue;
           if (item.presentation?.hidden) continue;
           const slug = field.slug;
-          if (seen.has(slug)) continue;
-          seen.add(slug);
+          if (seenRequired.has(slug)) continue;
+          seenRequired.add(slug);
           const v = values[slug];
           if (v === undefined || v === null || v === '') {
-            missing.push(slug);
+            errors[slug] = `${fieldDisplayLabel(field)} is required.`;
           }
         }
       }
     }
   }
-  return missing;
+
+  const seenLen = new Set<string>();
+  for (const region of regions) {
+    for (const row of region.rows) {
+      for (const col of row.columns) {
+        for (const item of col.items) {
+          if (isActionItem(item)) continue;
+          const field = resolveLayoutItemField(item, fields);
+          if (!field || item.presentation?.hidden) continue;
+          if (!fieldTypeSupportsTextLengthConstraints(field.fieldType)) continue;
+          const slug = field.slug;
+          if (seenLen.has(slug)) continue;
+          seenLen.add(slug);
+          if (errors[slug]) continue;
+          const cfg = (field.config ?? undefined) as Record<string, unknown> | undefined;
+          const maxL = readLengthConstraintFromConfig(cfg, 'maxLength');
+          const minL = readLengthConstraintFromConfig(cfg, 'minLength');
+          if (maxL === undefined && (minL === undefined || minL <= 0)) continue;
+          const raw = values[slug];
+          const str = raw === null || raw === undefined ? '' : String(raw);
+          if (maxL !== undefined && str.length > maxL) {
+            errors[slug] = `At most ${maxL} characters.`;
+          } else if (minL !== undefined && minL > 0 && str.length > 0 && str.length < minL) {
+            errors[slug] = `At least ${minL} characters.`;
+          }
+        }
+      }
+    }
+  }
+
+  return errors;
 }

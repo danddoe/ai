@@ -17,8 +17,8 @@ import {
 import { useAuth } from '../auth/AuthProvider';
 import { AuditPayloadModal } from '../components/AuditPayloadModal';
 import {
+  buildInlineFieldErrorsForRegions,
   LayoutV2RuntimeRenderer,
-  validateRequiredInRegions,
 } from '../components/runtime/LayoutV2RuntimeRenderer';
 import {
   assertCoreDomainRoutedOrThrow,
@@ -29,8 +29,33 @@ import {
   patchCoreMasterRow,
 } from '../api/coreMasterDataHybrid';
 import { isCoreDomainField } from '../utils/fieldStorage';
-import { parseLayoutV2, regionsForWizardStep } from '../utils/layoutV2';
+import { isActionItem, parseLayoutV2, regionsForWizardStep, resolveLayoutItemField } from '../utils/layoutV2';
 import type { LayoutV2 } from '../types/formLayout';
+
+function findFirstWizardStepWithFieldError(
+  layout: LayoutV2,
+  wizardRegionIds: string[],
+  errs: Record<string, string>,
+  flds: EntityFieldDto[]
+): number | null {
+  const bad = new Set(Object.keys(errs));
+  if (bad.size === 0) return null;
+  for (let si = 0; si < wizardRegionIds.length; si++) {
+    const rid = wizardRegionIds[si];
+    const region = layout.regions.find((r) => r.id === rid);
+    if (!region) continue;
+    for (const row of region.rows) {
+      for (const col of row.columns) {
+        for (const item of col.items) {
+          if (isActionItem(item)) continue;
+          const f = resolveLayoutItemField(item, flds);
+          if (f && bad.has(f.slug)) return si;
+        }
+      }
+    }
+  }
+  return null;
+}
 
 /** Locale date + local wall time with milliseconds (avoids Intl combos that throw in some runtimes). */
 function formatSavedTimestamp(date: Date): string {
@@ -72,6 +97,7 @@ export function RecordFormPage() {
   const [auditError, setAuditError] = useState<string | null>(null);
   const [auditPayloadOpen, setAuditPayloadOpen] = useState<AuditEventDto | null>(null);
   const [entitySlug, setEntitySlug] = useState<string>('');
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const wizardIds = layout?.runtime?.recordEntry?.wizard?.stepOrderRegionIds ?? [];
   const isWizard =
@@ -106,6 +132,7 @@ export function RecordFormPage() {
       if (!def) {
         setLayout(null);
         setValues({});
+        setFieldErrors({});
         return;
       }
       const parsed = parseLayoutV2(def.layout);
@@ -113,12 +140,14 @@ export function RecordFormPage() {
       if (!parsed) {
         setError('Default layout is not valid layout v2 JSON.');
         setValues({});
+        setFieldErrors({});
         return;
       }
 
       if (isCreate) {
         setValues({});
         setWizardStep(0);
+        setFieldErrors({});
         return;
       }
 
@@ -138,10 +167,12 @@ export function RecordFormPage() {
       }
       setValues(merged);
       setWizardStep(0);
+      setFieldErrors({});
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load');
       setLayout(null);
       setValues({});
+      setFieldErrors({});
     } finally {
       setLoading(false);
     }
@@ -176,6 +207,12 @@ export function RecordFormPage() {
 
   const onFieldChange = useCallback((slug: string, v: unknown) => {
     setValues((prev) => ({ ...prev, [slug]: v }));
+    setFieldErrors((prev) => {
+      if (!prev[slug]) return prev;
+      const next = { ...prev };
+      delete next[slug];
+      return next;
+    });
   }, []);
 
   function buildSubmitValues(raw: Record<string, unknown>): Record<string, unknown> {
@@ -216,19 +253,20 @@ export function RecordFormPage() {
 
   function validateCurrentStep(): boolean {
     if (!layout) return false;
-    const missing = validateRequiredInRegions(regionsToRender, fields, values);
-    if (missing.length > 0) {
-      window.alert(`Required fields: ${missing.join(', ')}`);
-      return false;
-    }
-    return true;
+    const errs = buildInlineFieldErrorsForRegions(regionsToRender, fields, values);
+    setFieldErrors(errs);
+    return Object.keys(errs).length === 0;
   }
 
   async function save() {
     if (!tenantId || !layout || !canRecordsWrite) return;
-    const missing = validateRequiredInRegions(layout.regions, fields, values);
-    if (missing.length > 0) {
-      window.alert(`Required fields: ${missing.join(', ')}`);
+    const errs = buildInlineFieldErrorsForRegions(layout.regions, fields, values);
+    setFieldErrors(errs);
+    if (Object.keys(errs).length > 0) {
+      if (isWizard && wizardIds.length > 0) {
+        const step = findFirstWizardStepWithFieldError(layout, wizardIds, errs, fields);
+        if (step !== null) setWizardStep(step);
+      }
       return;
     }
     const payload = buildSubmitValues(values);
@@ -274,11 +312,13 @@ export function RecordFormPage() {
         await patchCoreMasterRow(tenantId, entitySlug, rec.externalId, fields, values);
         await patchRecord(tenantId, entityId, recordId, { values: payload });
         await load();
+        setFieldErrors({});
         setSaveSuccess(`Saved successfully at ${formatSavedTimestamp(new Date())}.`);
         void loadAuditHistory();
       } else {
         await patchRecord(tenantId, entityId, recordId, { values: payload });
         await load();
+        setFieldErrors({});
         setSaveSuccess(`Saved successfully at ${formatSavedTimestamp(new Date())}.`);
         void loadAuditHistory();
       }
@@ -335,7 +375,10 @@ export function RecordFormPage() {
               type="button"
               className="btn btn-secondary"
               disabled={saving}
-              onClick={() => setWizardStep((s) => Math.max(0, s - 1))}
+              onClick={() => {
+                setFieldErrors({});
+                setWizardStep((s) => Math.max(0, s - 1));
+              }}
             >
               Back
             </button>
@@ -478,6 +521,7 @@ export function RecordFormPage() {
           disabled={!canRecordsWrite}
           canPiiRead={canPiiRead}
           useTabGroups={!isWizard}
+          fieldErrors={fieldErrors}
           onLayoutAction={(a) => {
             if (a === 'save') {
               if (canRecordsWrite) void save();

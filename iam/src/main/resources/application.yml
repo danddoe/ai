@@ -1,6 +1,15 @@
 spring:
   application:
     name: iam
+  cloud:
+    vault:
+      uri: ${VAULT_ADDR:http://127.0.0.1:8200}
+      authentication: TOKEN
+      token: ${VAULT_TOKEN:}
+  config:
+    import:
+      - optional:vault://secret/erp/${SPRING_VAULT_ENV:dev}/common
+      - optional:vault://secret/erp/${SPRING_VAULT_ENV:dev}/iam
   datasource:
     url: ${DATABASE_URL:jdbc:postgresql://localhost:26257/defaultdb?sslmode=disable}
     username: ${DATABASE_USER:root}
@@ -13,6 +22,9 @@ spring:
     properties:
       hibernate:
         dialect: org.hibernate.dialect.CockroachDialect
+        # Cockroach default SERIALIZABLE causes frequent WriteTooOld / restart-txn under concurrent refresh; RC matches typical app workloads.
+        connection:
+          isolation: 2
     open-in-view: false
   flyway:
     enabled: true
@@ -31,7 +43,7 @@ app:
     tenant-name: AI
     tenant-slug: ai
     admin-email: superadmin@ai.com
-    admin-password: ${SEED_SUPERADMIN_PASSWORD:SuperAdminDev123!}
+    admin-password: ${SEED_SUPERADMIN_PASSWORD:}
     admin-display-name: Super Admin
     admin-role-name: SUPERADMIN
   auth:
@@ -47,3 +59,4 @@ app:
     audience: ${JWT_AUDIENCE:erp-api}
     access-token-expiration-seconds: ${JWT_ACCESS_EXPIRY:900}
     refresh-token-expiration-seconds: ${JWT_REFRESH_EXPIRY:604800}
+    hmac-secret: ${JWT_SECRET:}

@@ -11,6 +11,8 @@ public class JwtProperties {
     private String audience = "erp-api";
     private long accessTokenExpirationSeconds = 900;   // 15 min
     private long refreshTokenExpirationSeconds = 604800; // 7 days
+    /** HS256 signing key; from Vault, env JWT_SECRET (via YAML), or dev profile default. */
+    private String hmacSecret;
     private String privateKeyPath;
     private String publicKeyPath;
 
@@ -22,6 +24,8 @@ public class JwtProperties {
     public void setAccessTokenExpirationSeconds(long accessTokenExpirationSeconds) { this.accessTokenExpirationSeconds = accessTokenExpirationSeconds; }
     public long getRefreshTokenExpirationSeconds() { return refreshTokenExpirationSeconds; }
     public void setRefreshTokenExpirationSeconds(long refreshTokenExpirationSeconds) { this.refreshTokenExpirationSeconds = refreshTokenExpirationSeconds; }
+    public String getHmacSecret() { return hmacSecret; }
+    public void setHmacSecret(String hmacSecret) { this.hmacSecret = hmacSecret; }
     public String getPrivateKeyPath() { return privateKeyPath; }
     public void setPrivateKeyPath(String privateKeyPath) { this.privateKeyPath = privateKeyPath; }
     public String getPublicKeyPath() { return publicKeyPath; }

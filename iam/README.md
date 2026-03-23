@@ -137,13 +137,7 @@ Flyway migrations in `src/main/resources/db/migration/`:
 .\gradlew.bat :iam:bootRun --args="--spring.profiles.active=default-bootstrap"
 ```
 
-Default login:
-
-| Field | Value |
-|-------|--------|
-| Tenant | `ai` (slug, case-insensitive) |
-| Email | `superadmin@ai.com` |
-| Password | `SuperAdminDev123!` (override with env `SEED_SUPERADMIN_PASSWORD`) |
+After bootstrap, default **tenant** slug is **`ai`** and **email** **`superadmin@ai.com`**. The password is **only** what you set in **`SEED_SUPERADMIN_PASSWORD`** / **`app.bootstrap.admin-password`** (or Vault)—there is no default in the repository.
 
 If login returns **“Tenant not found”**, no row matches that slug/UUID: either run bootstrap on an **empty** DB (`--spring.profiles.active=default-bootstrap`) or enter the slug of a tenant that already exists. Slugs like `default` only exist if you created them.
 
@@ -151,7 +145,9 @@ Override names/email via `app.bootstrap.*` in `application.yml`. If tenants alre
 
 Otherwise, create a tenant and user via SQL or admin APIs, then add `tenant_users` and roles.
 
+**Login example** (PowerShell; do not commit real passwords):
 
-Sample commands
-curl.exe -s -w "\nhttp_code:%{http_code} time:%{time_total}\n" -X POST http://127.0.0.1:8080/auth/login -H "Content-Type: application/json" --data-binary "@c:\project\ai\tmp-login.json" --max-time 90
-{"tenantSlugOrId":"ai","email":"superadmin@ai.com","password":"SuperAdminDev123!"}
+```powershell
+$body = @{ tenantSlugOrId = 'ai'; email = 'superadmin@ai.com'; password = $env:SEED_SUPERADMIN_PASSWORD } | ConvertTo-Json
+Invoke-RestMethod -Uri 'http://127.0.0.1:8080/auth/login' -Method Post -Body $body -ContentType 'application/json'
+```

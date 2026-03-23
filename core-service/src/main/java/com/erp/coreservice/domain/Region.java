@@ -1,5 +1,6 @@
 package com.erp.coreservice.domain;
 
+import com.erp.audit.AuditableResource;
 import jakarta.persistence.*;
 
 import java.time.Instant;
@@ -7,6 +8,7 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "regions")
+@AuditableResource(path = "core.region")
 public class Region {
 
     @Id

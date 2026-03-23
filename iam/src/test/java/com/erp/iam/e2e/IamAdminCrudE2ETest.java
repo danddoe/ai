@@ -25,7 +25,7 @@ class IamAdminCrudE2ETest extends AbstractIamE2ETest {
         String tenantASlug = "t-" + tenantAId.toString().substring(0, 8);
         UUID adminUserId = UUID.randomUUID();
         String adminEmail = "admin-" + adminUserId.toString().substring(0, 8) + "@example.com";
-        String adminPassword = "P@ssw0rd-123";
+        String adminPassword = "e2e-" + UUID.randomUUID() + "-Pw1";
         Timestamp now = Timestamp.from(Instant.now());
 
         jdbcTemplate.update(
@@ -133,7 +133,12 @@ class IamAdminCrudE2ETest extends AbstractIamE2ETest {
         assertThat(replaceRolePermsResp.getStatusCode()).isEqualTo(HttpStatus.OK);
 
         // Create a global user, add to Tenant B, assign role.
-        Map<String, Object> createUserBody = Map.of("email", "u-" + UUID.randomUUID().toString().substring(0, 8) + "@example.com", "displayName", "User B", "password", "P@ssw0rd-456", "status", "ACTIVE");
+        String newUserPassword = "e2e-" + UUID.randomUUID() + "-Pw1";
+        Map<String, Object> createUserBody = Map.of(
+                "email", "u-" + UUID.randomUUID().toString().substring(0, 8) + "@example.com",
+                "displayName", "User B",
+                "password", newUserPassword,
+                "status", "ACTIVE");
         ResponseEntity<Map> userCreateResp = restTemplate.exchange(
                 baseUrl + "/v1/users",
                 HttpMethod.POST,

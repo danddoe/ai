@@ -1,5 +1,7 @@
 package com.erp.coreservice.service;
 
+import com.erp.coreservice.audit.CoreDomainAuditService;
+import com.erp.coreservice.audit.CoreEntityAuditSnapshots;
 import com.erp.coreservice.domain.BusinessUnit;
 import com.erp.coreservice.domain.BuHierarchyHistory;
 import com.erp.coreservice.repository.BuHierarchyHistoryRepository;
@@ -14,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -23,15 +26,18 @@ public class BusinessUnitService {
     private final BusinessUnitRepository businessUnitRepository;
     private final BuHierarchyHistoryRepository buHierarchyHistoryRepository;
     private final CompanyRepository companyRepository;
+    private final CoreDomainAuditService coreDomainAuditService;
 
     public BusinessUnitService(
             BusinessUnitRepository businessUnitRepository,
             BuHierarchyHistoryRepository buHierarchyHistoryRepository,
-            CompanyRepository companyRepository
+            CompanyRepository companyRepository,
+            CoreDomainAuditService coreDomainAuditService
     ) {
         this.businessUnitRepository = businessUnitRepository;
         this.buHierarchyHistoryRepository = buHierarchyHistoryRepository;
         this.companyRepository = companyRepository;
+        this.coreDomainAuditService = coreDomainAuditService;
     }
 
     @Transactional
@@ -55,6 +61,7 @@ public class BusinessUnitService {
         HierarchyCycleChecker.assertNoBusinessUnitParentCycle(
                 businessUnitRepository, tenantId, saved.getBuId(), saved.getParentBuId());
         openBuHistory(tenantId, saved.getParentBuId(), saved.getBuId(), LocalDate.now());
+        coreDomainAuditService.businessUnitCreated(tenantId, saved);
         return saved;
     }
 
@@ -80,6 +87,7 @@ public class BusinessUnitService {
     @Transactional
     public BusinessUnit patch(UUID tenantId, UUID buId, OrgDtos.PatchBusinessUnitRequest req) {
         BusinessUnit bu = get(tenantId, buId);
+        Map<String, Object> auditBefore = CoreEntityAuditSnapshots.businessUnit(bu);
         UUID oldParent = bu.getParentBuId();
         boolean hierarchyChanged = false;
 
@@ -115,6 +123,7 @@ public class BusinessUnitService {
             closeOpenBuHistory(tenantId, buId, today);
             openBuHistory(tenantId, saved.getParentBuId(), saved.getBuId(), today);
         }
+        coreDomainAuditService.businessUnitUpdated(tenantId, auditBefore, saved);
         return saved;
     }
 

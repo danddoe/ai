@@ -24,9 +24,10 @@ public class JwtService {
 
     public JwtService(JwtProperties properties) {
         this.properties = properties;
-        String secret = System.getenv("JWT_SECRET");
+        String secret = properties.getHmacSecret();
         if (secret == null || secret.isBlank()) {
-            secret = "erp-iam-dev-secret-key-at-least-256-bits-long-for-hs256";
+            throw new IllegalStateException(
+                    "app.jwt.hmac-secret is required (Vault, JWT_SECRET via application.yml, or spring.profiles.active=dev)");
         }
         this.signingKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
     }
