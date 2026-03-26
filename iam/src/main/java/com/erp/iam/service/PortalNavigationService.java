@@ -228,6 +228,9 @@ public class PortalNavigationService {
                 n.getIcon(),
                 effectiveCategory,
                 List.copyOf(n.getSearchKeywords()),
+                n.getDesignStatus(),
+                n.getLinkedListViewId(),
+                n.getLinkedFormLayoutId(),
                 kids
         );
     }

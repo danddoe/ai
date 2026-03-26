@@ -1,11 +1,13 @@
 const SCHEMA_READ = 'entity_builder:schema:read';
 const SCHEMA_WRITE = 'entity_builder:schema:write';
+const SCHEMA_TENANT_WRITE = 'entity_builder:schema:tenant_write';
 const RECORDS_READ = 'entity_builder:records:read';
 const RECORDS_WRITE = 'entity_builder:records:write';
 const PII_READ = 'entity_builder:pii:read';
 const PORTAL_NAV_WRITE = 'portal:navigation:write';
 const IAM_SECURITY_ADMIN = 'iam:security:admin';
 const IAM_SUPERADMIN = 'iam:superadmin';
+const IAM_TENANTS_ADMIN = 'iam:tenants:admin';
 
 /** Decode JWT payload (no signature verify) for UI-only hints; authorization remains server-side. */
 export function parseJwtPayload(accessToken: string | null): Record<string, unknown> | null {
@@ -37,11 +39,35 @@ export function parseJwtTenantId(accessToken: string | null): string {
 }
 
 export function canSchemaRead(permissions: string[]): boolean {
-  return permissions.includes(SCHEMA_READ) || permissions.includes(SCHEMA_WRITE);
+  return (
+    permissions.includes(SCHEMA_READ) ||
+    permissions.includes(SCHEMA_WRITE) ||
+    permissions.includes(SCHEMA_TENANT_WRITE)
+  );
 }
 
+/** Create/edit tenant-owned entities, extensions, fields, layouts — not platform catalog entity definitions. */
 export function canSchemaWrite(permissions: string[]): boolean {
+  return permissions.includes(SCHEMA_WRITE) || permissions.includes(SCHEMA_TENANT_WRITE);
+}
+
+/** Catalog sync, DDL import apply, mutating STANDARD_OBJECT entity definitions/fields. */
+export function canPlatformSchemaWrite(permissions: string[]): boolean {
   return permissions.includes(SCHEMA_WRITE);
+}
+
+export type DefinitionScopeHint = { definitionScope?: string };
+
+/** UI guard: catalog entities require full {@link SCHEMA_WRITE}; tenant-owned allow tenant schema write. */
+export function canMutateEntityDefinition(
+  permissions: string[],
+  entity: DefinitionScopeHint | null | undefined
+): boolean {
+  if (!entity) return false;
+  if (entity.definitionScope === 'STANDARD_OBJECT') {
+    return permissions.includes(SCHEMA_WRITE);
+  }
+  return canSchemaWrite(permissions);
 }
 
 export function canRecordsRead(permissions: string[]): boolean {
@@ -58,11 +84,24 @@ export function canPiiRead(permissions: string[]): boolean {
 
 /** Tenant-scoped (or global with admin) portal nav item create; matches IAM nav write API. */
 export function canCreatePortalNavItem(permissions: string[]): boolean {
-  return permissions.includes(PORTAL_NAV_WRITE) || permissions.includes(SCHEMA_WRITE);
+  return (
+    permissions.includes(PORTAL_NAV_WRITE) ||
+    permissions.includes(SCHEMA_WRITE) ||
+    permissions.includes(SCHEMA_TENANT_WRITE)
+  );
 }
 
 export function canManageGlobalNavigation(permissions: string[]): boolean {
   return permissions.includes(IAM_SECURITY_ADMIN) || permissions.includes(IAM_SUPERADMIN);
+}
+
+/** Create sample tenant + tenant admin via IAM APIs (dev tooling; requires platform IAM access). */
+export function canRunSampleTenantSeed(permissions: string[]): boolean {
+  return (
+    permissions.includes(IAM_TENANTS_ADMIN) ||
+    permissions.includes(IAM_SECURITY_ADMIN) ||
+    permissions.includes(IAM_SUPERADMIN)
+  );
 }
 
 function base64UrlDecode(segment: string): string {

@@ -61,7 +61,7 @@ public class RecordFilterValidator {
         if (hasChildren) {
             return validateGroup(raw, bySlug, piiReadPermission, depth, counter);
         }
-        return validateClause(raw, bySlug, piiReadPermission, counter);
+        return validateFieldOrMetadataClause(raw, bySlug, piiReadPermission, counter);
     }
 
     private static ResolvedFilter.ResolvedGroup validateGroup(
@@ -97,7 +97,7 @@ public class RecordFilterValidator {
         return new ResolvedFilter.ResolvedGroup(opNorm, List.copyOf(resolved));
     }
 
-    private static ResolvedFilter.ResolvedClause validateClause(
+    private static ResolvedFilter validateFieldOrMetadataClause(
             RecordQueryDtos.FilterNode raw,
             Map<String, EntityField> bySlug,
             boolean piiReadPermission,
@@ -108,7 +108,13 @@ public class RecordFilterValidator {
             throw new ApiException(HttpStatus.BAD_REQUEST, "bad_request", "Too many filter clauses",
                     Map.of("max", MAX_TOTAL_CLAUSES));
         }
-        EntityField ef = bySlug.get(raw.getField().trim());
+        String fieldKey = raw.getField().trim();
+        ResolvedFilter.RecordMetadataField metaField = ResolvedFilter.RecordMetadataField.fromRequestField(fieldKey);
+        if (metaField != null) {
+            return validateMetadataClause(raw, metaField, counter);
+        }
+
+        EntityField ef = bySlug.get(fieldKey);
         if (ef == null) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "bad_request", "Unknown field slug", Map.of("field", raw.getField()));
         }
@@ -132,6 +138,32 @@ public class RecordFilterValidator {
 
         List<Object> params = bindClauseValues(kind, clauseOp, raw.getValue(), ef.getSlug());
         return new ResolvedFilter.ResolvedClause(ef.getId(), kind, clauseOp, params);
+    }
+
+    private static ResolvedFilter.ResolvedMetadataClause validateMetadataClause(
+            RecordQueryDtos.FilterNode raw,
+            ResolvedFilter.RecordMetadataField metaField,
+            ClauseCounter counter
+    ) {
+        counter.count++;
+        if (counter.count > MAX_TOTAL_CLAUSES) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "bad_request", "Too many filter clauses",
+                    Map.of("max", MAX_TOTAL_CLAUSES));
+        }
+        String slug = metaField.requestKey();
+        String cop = raw.getOp();
+        if (cop == null || cop.isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "bad_request", "Clause op required", Map.of("field", slug));
+        }
+        String opNorm = cop.trim().toLowerCase(Locale.ROOT);
+        ResolvedFilter.ValueKind kind = switch (metaField) {
+            case CREATED_AT, UPDATED_AT -> ResolvedFilter.ValueKind.DATE;
+            case CREATED_BY, UPDATED_BY -> ResolvedFilter.ValueKind.REFERENCE;
+        };
+        ResolvedFilter.ClauseOp clauseOp = parseClauseOp(opNorm);
+        allowOpForKind(kind, clauseOp, slug);
+        List<Object> params = bindClauseValues(kind, clauseOp, raw.getValue(), slug);
+        return new ResolvedFilter.ResolvedMetadataClause(metaField, clauseOp, List.copyOf(params));
     }
 
     private static ResolvedFilter.ValueKind valueKind(String fieldType) {

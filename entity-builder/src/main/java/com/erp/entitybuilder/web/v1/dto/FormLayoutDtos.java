@@ -34,12 +34,17 @@ public class FormLayoutDtos {
         @JsonProperty("isDefault")
         private boolean isDefault = false;
 
+        /** ACTIVE (published) or WIP; omit for ACTIVE. */
+        private String status;
+
         public String getName() { return name; }
         public void setName(String name) { this.name = name; }
         public Map<String, Object> getLayout() { return layout; }
         public void setLayout(Map<String, Object> layout) { this.layout = layout; }
         public boolean isDefault() { return isDefault; }
         public void setDefault(boolean aDefault) { isDefault = aDefault; }
+        public String getStatus() { return status; }
+        public void setStatus(String status) { this.status = status; }
     }
 
     public static class CreateFromTemplateRequest {

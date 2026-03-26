@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Button, Checkbox, TextInput } from '@mantine/core';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   getEntity,
   getFormLayout,
@@ -10,12 +11,14 @@ import {
   type FormLayoutDto,
 } from '../api/schemas';
 import { useAuth } from '../auth/AuthProvider';
+import { canMutateEntityDefinition } from '../auth/jwtPermissions';
 import { FieldsPanel } from '../components/builder/FieldsPanel';
 import { StructurePanel } from '../components/builder/StructurePanel';
 import { PropertiesPanel } from '../components/builder/PropertiesPanel';
 import { CreateFieldModal } from '../components/builder/CreateFieldModal';
 import { EditFieldModal } from '../components/builder/EditFieldModal';
 import { TemplatePickerModal } from '../components/builder/TemplatePickerModal';
+import { publishDesignArtifacts } from '../ui/publishDesignArtifacts';
 import type { LayoutV2, StructureSelection } from '../types/formLayout';
 import { fieldOnForm, newLayoutActionItem, newLayoutItem, parseLayoutV2 } from '../utils/layoutV2';
 import * as M from '../utils/layoutMutations';
@@ -23,7 +26,8 @@ import * as M from '../utils/layoutMutations';
 export function FormBuilderPage() {
   const { entityId = '', layoutId = '' } = useParams();
   const navigate = useNavigate();
-  const { canSchemaWrite } = useAuth();
+  const location = useLocation();
+  const { canSchemaWrite, permissions } = useAuth();
 
   const [entity, setEntity] = useState<EntityDto | null>(null);
   const [layoutDto, setLayoutDto] = useState<FormLayoutDto | null>(null);
@@ -51,6 +55,20 @@ export function FormBuilderPage() {
   } | null>(null);
   const [editField, setEditField] = useState<EntityFieldDto | null>(null);
   const [tplOpen, setTplOpen] = useState(false);
+
+  const canMutateFieldDefs = useMemo(
+    () => (entity ? canMutateEntityDefinition(permissions, entity) : false),
+    [entity, permissions]
+  );
+
+  const [linkedNavItemId, setLinkedNavItemId] = useState('');
+  const [linkedListViewId, setLinkedListViewId] = useState('');
+
+  useEffect(() => {
+    const st = location.state as { linkedNavigationItemId?: string; linkedListViewId?: string } | undefined;
+    setLinkedNavItemId(st?.linkedNavigationItemId ?? '');
+    setLinkedListViewId(st?.linkedListViewId ?? '');
+  }, [location.key, location.state]);
 
   const load = useCallback(async () => {
     if (!entityId || !layoutId) return;
@@ -115,6 +133,29 @@ export function FormBuilderPage() {
     }
   }
 
+  const showWipPublish =
+    canSchemaWrite && !!linkedNavItemId && layoutDto?.status === 'WIP' && !!layoutId;
+
+  async function publishWip() {
+    if (!linkedNavItemId || !entityId || !layoutId) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await publishDesignArtifacts({
+        entityId,
+        navigationItemId: linkedNavItemId,
+        listViewId: linkedListViewId || undefined,
+        formLayoutId: layoutId,
+      });
+      const refreshed = await getFormLayout(entityId, layoutId);
+      setLayoutDto(refreshed);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Publish failed');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   if (legacy) {
     return (
       <div className="page-shell">
@@ -129,9 +170,9 @@ export function FormBuilderPage() {
             This layout is not <code>version: 2</code> with regions. The builder only supports the v2 model. Create a
             new layout from a template or blank, then rebuild the structure.
           </p>
-          <Link className="btn btn-primary" to={`/entities/${entityId}/layouts`}>
+          <Button component={Link} to={`/entities/${entityId}/layouts`}>
             Back to layouts
-          </Link>
+          </Button>
         </div>
       </div>
     );
@@ -170,48 +211,66 @@ export function FormBuilderPage() {
           <span className="env-badge" title="API base">
             {import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}
           </span>
-          <button
+          <Button
             type="button"
-            className="btn btn-secondary btn-sm"
+            variant="default"
+            size="sm"
             onClick={() =>
               navigate(`/entities/${entityId}/layouts/${layoutId}/preview`, { state: { draft } })
             }
           >
             Preview
-          </button>
+          </Button>
           {canSchemaWrite && (
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setTplOpen(true)}>
+            <Button type="button" variant="default" size="sm" onClick={() => setTplOpen(true)}>
               Start from template
-            </button>
+            </Button>
           )}
-          <button type="button" className="btn btn-primary" disabled={saving || !canSchemaWrite} onClick={() => void save()}>
+          <Button type="button" disabled={saving || !canSchemaWrite} onClick={() => void save()}>
             {saving ? 'Saving…' : 'Save'}
-          </button>
+          </Button>
         </div>
       </header>
-      <div className="builder-name-row" style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-end' }}>
-        <label className="field-label" style={{ flex: 1, maxWidth: 360, margin: 0 }}>
-          Layout name
-          <input
-            className="input"
-            value={layoutName}
-            onChange={(e) => setLayoutName(e.target.value)}
-            readOnly={!canSchemaWrite}
-          />
-        </label>
-        <label
-          className="field-label row"
-          style={{ margin: 0 }}
-          title="Used for New record and Edit record (runtime form), not the list view"
+      {showWipPublish && (
+        <div
+          role="status"
+          className="builder-muted"
+          style={{
+            margin: '0 1rem 12px',
+            padding: '12px 14px',
+            background: 'var(--builder-warn-bg, #fef3c7)',
+            borderRadius: 8,
+            fontSize: '0.9rem',
+          }}
         >
-          <input
-            type="checkbox"
-            checked={layoutIsDefault}
-            onChange={(e) => setLayoutIsDefault(e.target.checked)}
-            disabled={!canSchemaWrite}
-          />
-          <span>Default form layout for entity</span>
-        </label>
+          <strong>Work in progress</strong> — This form and the sidebar link are not published yet.{' '}
+          {linkedListViewId ? (
+            <>
+              Open the{' '}
+              <Link to={`/entities/${entityId}/list-views/${linkedListViewId}`}>list view designer</Link> if you need to
+              adjust columns.
+            </>
+          ) : null}
+          <Button type="button" size="sm" style={{ marginLeft: 12 }} disabled={saving} onClick={() => void publishWip()}>
+            {saving ? 'Publishing…' : 'Publish'}
+          </Button>
+        </div>
+      )}
+      <div className="builder-name-row" style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-end' }}>
+        <TextInput
+          label="Layout name"
+          style={{ flex: 1, maxWidth: 360 }}
+          value={layoutName}
+          onChange={(e) => setLayoutName(e.target.value)}
+          readOnly={!canSchemaWrite}
+        />
+        <Checkbox
+          checked={layoutIsDefault}
+          onChange={(e) => setLayoutIsDefault(e.currentTarget.checked)}
+          disabled={!canSchemaWrite}
+          label="Default form layout for entity"
+          title="Used for New record and Edit record (runtime form), not the list view"
+        />
       </div>
       {error && (
         <p role="alert" className="text-error" style={{ margin: '0 1rem' }}>
@@ -230,10 +289,12 @@ export function FormBuilderPage() {
           onClearAddTarget={() => setAddTarget(null)}
           onPickField={onPickField}
           onOpenCreateField={() => {
+            if (!canMutateFieldDefs) return;
             setCreateFieldCtx({});
             setCreateFieldOpen(true);
           }}
           onOpenEditField={(f) => setEditField(f)}
+          fieldDefinitionsWritable={canMutateFieldDefs}
         />
         <StructurePanel
           layout={draft}
@@ -276,6 +337,7 @@ export function FormBuilderPage() {
           onChange={canSchemaWrite ? (next) => setDraft(next) : () => {}}
           onClearSelection={() => setSelection(null)}
           onOpenCreateField={(opts) => {
+            if (!canMutateFieldDefs) return;
             setCreateFieldCtx(opts ?? {});
             setCreateFieldOpen(true);
           }}

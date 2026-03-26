@@ -36,3 +36,13 @@ Bottom line
 RBAC: Start when you have multiple meaningful roles or permission sprawl — not necessarily today, but before you duplicate ad hoc checks everywhere.
 ABAC as predicates: Defer until you have at least one non-negotiable row/field rule; then add the smallest structure that expresses it (often row ACL or simple attribute checks, not a full generic engine on day one).
 So: don’t build the full RBAC+ABAC tower now unless you’re actively implementing differentiated access; do plan the phased path so you don’t paint search and dynamic entities into a corner.
+
+
+Plan todos added: optional-record-audit-ui and optional-updated-by-full (full stack for last editor).
+
+Out of scope (unless you explicitly want them)
+
+
+Replacing cmdk in [GlobalSearch.tsx](c:\project\ai\erp-portal\src\components\GlobalSearch.tsx) with Mantine Combobox (optional follow-up).
+Virtualized infinite scroll for huge record sets (@tanstack/react-virtual + TanStack Table) — only if performance requires it.
+

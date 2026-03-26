@@ -20,6 +20,14 @@ public class BootstrapSeedProperties {
     /** Role name stored in {@code roles.name} for the seeded user */
     private String adminRoleName = "SUPERADMIN";
 
+    /**
+     * Second bootstrap identity (automation / “system builder”): same tenant and SUPERADMIN role as the primary admin.
+     * Password defaults to {@link #adminPassword} when blank; override with {@code SEED_SUPERAI_PASSWORD}.
+     */
+    private String systemBuilderEmail = "superai@unknownerp.com";
+    private String systemBuilderDisplayName = "Super AI The Builder";
+    private String systemBuilderPassword = "";
+
     public String getTenantName() {
         return tenantName;
     }
@@ -66,5 +74,29 @@ public class BootstrapSeedProperties {
 
     public void setAdminRoleName(String adminRoleName) {
         this.adminRoleName = adminRoleName;
+    }
+
+    public String getSystemBuilderEmail() {
+        return systemBuilderEmail;
+    }
+
+    public void setSystemBuilderEmail(String systemBuilderEmail) {
+        this.systemBuilderEmail = systemBuilderEmail;
+    }
+
+    public String getSystemBuilderDisplayName() {
+        return systemBuilderDisplayName;
+    }
+
+    public void setSystemBuilderDisplayName(String systemBuilderDisplayName) {
+        this.systemBuilderDisplayName = systemBuilderDisplayName;
+    }
+
+    public String getSystemBuilderPassword() {
+        return systemBuilderPassword;
+    }
+
+    public void setSystemBuilderPassword(String systemBuilderPassword) {
+        this.systemBuilderPassword = systemBuilderPassword;
     }
 }

@@ -1,9 +1,11 @@
 package com.erp.entitybuilder.web.v1.dto;
 
+import com.erp.entitybuilder.domain.DefinitionScope;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -12,6 +14,7 @@ public class EntityFieldDtos {
     public record EntityFieldDto(
             UUID id,
             UUID entityId,
+            DefinitionScope definitionScope,
             String name,
             String slug,
             String fieldType,
@@ -19,11 +22,20 @@ public class EntityFieldDtos {
             boolean pii,
             int sortOrder,
             String labelOverride,
+            /** Resolved label for the current request locale (see Accept-Language / X-User-Locale). */
+            String displayLabel,
+            /** All locale → label rows for designer UIs. */
+            Map<String, String> labels,
             String formatString,
             String status,
             Instant createdAt,
             Instant updatedAt,
             Map<String, Object> config
+    ) {}
+
+    public record UpsertFieldLabelRequest(
+            @Size(max = 255)
+            String label
     ) {}
 
     public static class CreateFieldRequest {

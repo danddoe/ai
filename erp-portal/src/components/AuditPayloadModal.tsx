@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { Button, Group, Text } from '@mantine/core';
 import { JsonDocumentView, stringifyPayload } from './JsonDocumentView';
 import { Modal } from './Modal';
 
@@ -24,19 +25,19 @@ export function AuditPayloadModal({ payload, title = 'Audit payload', onClose }:
       onClose={onClose}
       extraWide
       footer={
-        <>
-          <button type="button" className="btn btn-secondary btn-sm" onClick={() => void copy()}>
+        <Group justify="flex-end" gap="sm">
+          <Button variant="default" size="xs" onClick={() => void copy()}>
             Copy JSON
-          </button>
-          <button type="button" className="btn btn-primary btn-sm" onClick={onClose}>
+          </Button>
+          <Button size="xs" onClick={onClose}>
             Close
-          </button>
-        </>
+          </Button>
+        </Group>
       }
     >
-      <p className="json-doc-lead builder-muted">
+      <Text size="sm" c="dimmed" className="json-doc-lead">
         Formatted like a readable document; use <strong>Copy JSON</strong> for the raw text.
-      </p>
+      </Text>
       <JsonDocumentView value={payload} label="Formatted audit payload" />
     </Modal>
   );

@@ -28,7 +28,7 @@ public class EntityExtensionsController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('entity_builder:schema:write')")
+    @PreAuthorize("@entityBuilderSecurity.canWriteTenantSchema()")
     public EntityDtos.EntityDto create(
             @PathVariable UUID baseEntityId,
             @RequestBody ExtensionDtos.CreateExtensionRequest req
@@ -39,7 +39,7 @@ public class EntityExtensionsController {
     }
 
     @DeleteMapping("/{extensionEntityId}")
-    @PreAuthorize("hasAuthority('entity_builder:schema:write')")
+    @PreAuthorize("@entityBuilderSecurity.canWriteTenantSchema()")
     public void delete(@PathVariable UUID baseEntityId, @PathVariable UUID extensionEntityId) {
         UUID tenantId = SecurityUtil.principal().getTenantId();
         schemaService.deleteExtension(tenantId, extensionEntityId);
@@ -56,6 +56,7 @@ public class EntityExtensionsController {
                 e.getDefaultDisplayFieldSlug(),
                 e.getStatus(),
                 e.getCategoryKey(),
+                e.getDefinitionScope(),
                 e.getCreatedAt(),
                 e.getUpdatedAt()
         );

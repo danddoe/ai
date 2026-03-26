@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "manifestKey": "entity_status_assignment",
+  "entity": {
+    "name": "Entity status assignment",
+    "slug": "entity_status_assignment",
+    "categoryKey": "master_data",
+    "description": "Per tenant, which entity_status values apply for reference → entity_status lookups and list filters. Scope is ENTITY_DEFINITION (scope_id = entities.id) or ENTITY_FIELD (scope_id = entity_fields.id). Native table entity_status_assignment; managed via assignment APIs.",
+    "defaultDisplayFieldSlug": "entity_status_id"
+  },
+  "fields": [
+    {
+      "name": "Assignment scope",
+      "slug": "assignment_scope",
+      "sortOrder": 10,
+      "fieldType": "string",
+      "required": true,
+      "pii": false,
+      "config": {
+        "storage": "EAV_EXTENSION"
+      }
+    },
+    {
+      "name": "Scope id",
+      "slug": "scope_id",
+      "sortOrder": 15,
+      "fieldType": "string",
+      "required": true,
+      "pii": false,
+      "config": {
+        "storage": "EAV_EXTENSION"
+      }
+    },
+    {
+      "name": "Entity status",
+      "slug": "entity_status_id",
+      "sortOrder": 20,
+      "fieldType": "reference",
+      "required": true,
+      "pii": false,
+      "config": {
+        "storage": "EAV_EXTENSION",
+        "targetEntitySlug": "entity_status"
+      }
+    },
+    {
+      "name": "Sort order",
+      "slug": "sort_order",
+      "sortOrder": 30,
+      "fieldType": "number",
+      "required": true,
+      "pii": false,
+      "config": {
+        "storage": "EAV_EXTENSION"
+      }
+    }
+  ]
+}

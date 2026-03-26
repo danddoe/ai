@@ -62,7 +62,7 @@ class RecordLinksE2ETest extends AbstractEntityBuilderE2ETest {
         assertThat(relResp.getStatusCode()).isEqualTo(HttpStatus.OK);
 
         // Create records
-        Map<String, Object> orderValues = Map.of();
+        Map<String, Object> orderValues = Map.of("name", "Order record");
         ResponseEntity<Map> orderRecordResp = restTemplate.exchange(
                 baseUrl + "/v1/tenants/" + tenantId + "/entities/" + orderEntityId + "/records",
                 HttpMethod.POST,
@@ -71,7 +71,7 @@ class RecordLinksE2ETest extends AbstractEntityBuilderE2ETest {
         );
         String orderRecordId = String.valueOf(orderRecordResp.getBody().get("id"));
 
-        Map<String, Object> itemValues = Map.of();
+        Map<String, Object> itemValues = Map.of("name", "Item record");
         ResponseEntity<Map> itemRecordResp = restTemplate.exchange(
                 baseUrl + "/v1/tenants/" + tenantId + "/entities/" + itemEntityId + "/records",
                 HttpMethod.POST,

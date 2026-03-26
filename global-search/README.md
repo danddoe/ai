@@ -33,7 +33,7 @@ Implement `DeepSearchClient` (e.g. ClickHouse or Elasticsearch) and register it 
 ## Run
 
 ```bash
-./gradlew :global-search:bootRun
+./gradlew :global-search:bootRun --args="--spring.profiles.active=default-bootstrap"
 ```
 
 Route through **api-gateway** (port 8000): `GLOBAL_SEARCH_URL` is wired in `api-gateway` `application.yml`.

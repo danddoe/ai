@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -64,7 +65,7 @@ public class RecordListViewService {
     }
 
     @Transactional
-    public RecordListView create(UUID tenantId, UUID entityId, String name, String definitionJson, boolean isDefault) {
+    public RecordListView create(UUID tenantId, UUID entityId, String name, String definitionJson, boolean isDefault, String statusRaw) {
         requireEntityInTenant(tenantId, entityId);
         if (recordListViewRepository.findByTenantIdAndEntityIdAndName(tenantId, entityId, name).isPresent()) {
             throw new ApiException(HttpStatus.CONFLICT, "conflict", "Record list view name already exists", Map.of("name", name));
@@ -78,7 +79,7 @@ public class RecordListViewService {
         v.setName(name);
         v.setDefinition(definitionJson);
         v.setDefault(isDefault);
-        v.setStatus("ACTIVE");
+        v.setStatus(normalizeListViewStatus(statusRaw));
 
         if (isDefault) {
             clearOtherDefaults(tenantId, entityId, null);
@@ -111,7 +112,7 @@ public class RecordListViewService {
             v.setDefinition(json);
         });
 
-        status.filter(s -> s != null && !s.isBlank()).ifPresent(v::setStatus);
+        status.filter(s -> s != null && !s.isBlank()).ifPresent(s -> v.setStatus(normalizeListViewStatus(s)));
 
         if (isDefault.isPresent()) {
             boolean newDefault = isDefault.get();
@@ -127,6 +128,17 @@ public class RecordListViewService {
     public void delete(UUID tenantId, UUID viewId) {
         RecordListView v = get(tenantId, viewId);
         recordListViewRepository.delete(v);
+    }
+
+    private static String normalizeListViewStatus(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return "ACTIVE";
+        }
+        String s = raw.trim().toUpperCase(Locale.ROOT);
+        if ("ACTIVE".equals(s) || "WIP".equals(s)) {
+            return s;
+        }
+        throw new ApiException(HttpStatus.BAD_REQUEST, "bad_request", "status must be ACTIVE or WIP");
     }
 
     private void requireEntityInTenant(UUID tenantId, UUID entityId) {

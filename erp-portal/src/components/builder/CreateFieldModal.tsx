@@ -1,4 +1,5 @@
 import { FormEvent, useMemo, useState } from 'react';
+import { Button, Checkbox, Group, Paper, Select, Stack, Text, TextInput } from '@mantine/core';
 import { Modal } from '../Modal';
 import {
   DOCUMENT_NUMBER_FIELD_TYPE,
@@ -14,9 +15,19 @@ import {
   fieldTypeSupportsTextLengthConstraints,
 } from '../../utils/fieldTextConstraints';
 
+const FIELD_TYPE_DATA = [
+  { value: 'string', label: 'string' },
+  { value: 'text', label: 'text' },
+  { value: 'number', label: 'number' },
+  { value: 'boolean', label: 'boolean' },
+  { value: 'date', label: 'date' },
+  { value: 'datetime', label: 'datetime' },
+  { value: 'reference', label: 'reference' },
+  { value: DOCUMENT_NUMBER_FIELD_TYPE, label: 'document number (record column)' },
+];
+
 type Props = {
   entityId: string;
-  /** Prefill when opened (e.g. from an unresolved layout placement). */
   suggestedName?: string;
   suggestedSlug?: string;
   onClose: () => void;
@@ -107,116 +118,88 @@ export function CreateFieldModal({
       title="New database field"
       onClose={onClose}
       footer={
-        <>
-          <button type="button" className="btn btn-secondary" onClick={onClose}>
+        <Group justify="flex-end" gap="sm">
+          <Button variant="default" onClick={onClose}>
             Cancel
-          </button>
-          <button type="submit" form="create-field-form" className="btn btn-primary" disabled={pending}>
+          </Button>
+          <Button type="submit" form="create-field-form" loading={pending}>
             {pending ? 'Creating…' : 'Create'}
-          </button>
-        </>
+          </Button>
+        </Group>
       }
     >
-      <form id="create-field-form" onSubmit={(e) => void onSubmit(e)} style={{ display: 'grid', gap: 12 }}>
-        <label className="field-label">
-          Name
-          <input
-            className="input"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-            autoFocus
+      <form id="create-field-form" onSubmit={(e) => void onSubmit(e)}>
+        <Stack gap="md">
+          <TextInput label="Name" value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
+          <TextInput label="Slug" value={slug} onChange={(e) => setSlug(e.target.value)} required />
+          <Select
+            label="Field type"
+            data={FIELD_TYPE_DATA}
+            value={fieldType}
+            onChange={(v) => v && setFieldType(v)}
           />
-        </label>
-        <label className="field-label">
-          Slug
-          <input className="input" value={slug} onChange={(e) => setSlug(e.target.value)} required />
-        </label>
-        <label className="field-label">
-          Field type
-          <select className="input" value={fieldType} onChange={(e) => setFieldType(e.target.value)}>
-            <option value="string">string</option>
-            <option value="text">text</option>
-            <option value="number">number</option>
-            <option value="boolean">boolean</option>
-            <option value="date">date</option>
-            <option value="datetime">datetime</option>
-            <option value="reference">reference</option>
-            <option value={DOCUMENT_NUMBER_FIELD_TYPE}>document number (record column)</option>
-          </select>
-        </label>
-        <label className="field-label row">
-          <input type="checkbox" checked={required} onChange={(e) => setRequired(e.target.checked)} />
-          Required
-        </label>
-        <label className="field-label row">
-          <input type="checkbox" checked={pii} onChange={(e) => setPii(e.target.checked)} />
-          PII
-        </label>
-        <label className="field-label row">
-          <input
-            type="checkbox"
+          <Checkbox label="Required" checked={required} onChange={(e) => setRequired(e.currentTarget.checked)} />
+          <Checkbox label="PII" checked={pii} onChange={(e) => setPii(e.currentTarget.checked)} />
+          <Checkbox
+            label="Include in global search / lookups"
             checked={includeInSearch}
-            onChange={(e) => setIncludeInSearch(e.target.checked)}
+            onChange={(e) => setIncludeInSearch(e.currentTarget.checked)}
             disabled={pii}
           />
-          Include in global search / lookups
-        </label>
 
-        <p className="builder-muted" style={{ fontSize: '0.8125rem', margin: 0 }}>
-          <strong>Width on the form</strong> is set after you add the field: select it on the layout →{' '}
-          <strong>Presentation</strong> → <strong>Width</strong> (full / half / third).
-        </p>
+          <Text size="sm" c="dimmed">
+            <strong>Width on the form</strong> is set after you add the field: select it on the layout →{' '}
+            <strong>Presentation</strong> → <strong>Width</strong> (full / half / third).
+          </Text>
 
-        {showTextLengthSection && (
-          <fieldset style={{ border: '1px solid #e4e4e7', borderRadius: 8, padding: '10px 12px', margin: 0 }}>
-            <legend style={{ fontSize: '0.8125rem', padding: '0 6px' }}>Text length (optional)</legend>
-            <p className="builder-muted" style={{ fontSize: '0.75rem', margin: '0 0 8px' }}>
-              Enforced in the record form before save. Leave blank for no limit.
-            </p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <label className="field-label" style={{ margin: 0 }}>
-                Min characters
-                <input
-                  className="input"
+          {showTextLengthSection && (
+            <Paper withBorder p="sm" radius="md">
+              <Text size="sm" fw={500} mb="xs">
+                Text length (optional)
+              </Text>
+              <Text size="xs" c="dimmed" mb="sm">
+                Enforced in the record form before save. Leave blank for no limit.
+              </Text>
+              <Group grow align="flex-start">
+                <TextInput
+                  label="Min characters"
                   inputMode="numeric"
                   value={minLenStr}
                   onChange={(e) => setMinLenStr(e.target.value.replace(/\D/g, ''))}
                   placeholder="—"
+                  size="sm"
                 />
-              </label>
-              <label className="field-label" style={{ margin: 0 }}>
-                Max characters
-                <input
-                  className="input"
+                <TextInput
+                  label="Max characters"
                   inputMode="numeric"
                   value={maxLenStr}
                   onChange={(e) => setMaxLenStr(e.target.value.replace(/\D/g, ''))}
                   placeholder="—"
+                  size="sm"
                 />
-              </label>
-            </div>
-          </fieldset>
-        )}
+              </Group>
+            </Paper>
+          )}
 
-        {showDocumentNumberSection && (
-          <DocumentNumberGenerationSection
-            docStrategy={docStrategy}
-            setDocStrategy={setDocStrategy}
-            docPrefix={docPrefix}
-            setDocPrefix={setDocPrefix}
-            docSequenceWidth={docSequenceWidth}
-            setDocSequenceWidth={setDocSequenceWidth}
-            docTimeZone={docTimeZone}
-            setDocTimeZone={setDocTimeZone}
-          />
-        )}
+          {showDocumentNumberSection && (
+            <DocumentNumberGenerationSection
+              docStrategy={docStrategy}
+              setDocStrategy={setDocStrategy}
+              docPrefix={docPrefix}
+              setDocPrefix={setDocPrefix}
+              docSequenceWidth={docSequenceWidth}
+              setDocSequenceWidth={setDocSequenceWidth}
+              docTimeZone={docTimeZone}
+              setDocTimeZone={setDocTimeZone}
+            />
+          )}
 
-        {error && (
-          <p role="alert" className="text-error">
-            {error}
-          </p>
-        )}
+          {error && (
+            <Text role="alert" c="red" size="sm">
+              {error}
+            </Text>
+          )}
+        </Stack>
       </form>
     </Modal>
   );

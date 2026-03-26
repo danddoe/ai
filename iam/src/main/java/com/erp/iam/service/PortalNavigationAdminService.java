@@ -85,7 +85,10 @@ public class PortalNavigationAdminService {
                 List.copyOf(item.getSearchKeywords()),
                 List.copyOf(item.getRequiredPermissions()),
                 List.copyOf(item.getRequiredRoles()),
-                item.isActive()
+                item.isActive(),
+                item.getDesignStatus(),
+                item.getLinkedListViewId(),
+                item.getLinkedFormLayoutId()
         );
     }
 
@@ -317,10 +320,31 @@ public class PortalNavigationAdminService {
         item.setRequiredPermissions(req.requiredPermissions() != null ? new ArrayList<>(req.requiredPermissions()) : new ArrayList<>());
         item.setRequiredRoles(req.requiredRoles() != null ? new ArrayList<>(req.requiredRoles()) : new ArrayList<>());
         item.setActive(true);
+        item.setDesignStatus(normalizeDesignStatus(req.designStatus()));
+        if (req.linkedListViewId() != null) {
+            item.setLinkedListViewId(req.linkedListViewId());
+        }
+        if (req.linkedFormLayoutId() != null) {
+            item.setLinkedFormLayoutId(req.linkedFormLayoutId());
+        }
 
         assertRouteMatchesType(item);
         repository.save(item);
         return new NavigationDtos.NavigationItemCreatedDto(item.getId());
+    }
+
+    private static String normalizeDesignStatus(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return "PUBLISHED";
+        }
+        String s = raw.trim().toUpperCase(Locale.ROOT);
+        if ("WIP".equals(s)) {
+            return "WIP";
+        }
+        if ("PUBLISHED".equals(s)) {
+            return "PUBLISHED";
+        }
+        throw new ApiException(HttpStatus.BAD_REQUEST, "bad_request", "designStatus must be PUBLISHED or WIP");
     }
 
     private static String normalizeNavType(String raw) {
@@ -454,6 +478,15 @@ public class PortalNavigationAdminService {
         }
         if (req.active() != null) {
             item.setActive(req.active());
+        }
+        if (req.designStatus() != null) {
+            item.setDesignStatus(normalizeDesignStatus(req.designStatus()));
+        }
+        if (req.linkedListViewId() != null) {
+            item.setLinkedListViewId(req.linkedListViewId());
+        }
+        if (req.linkedFormLayoutId() != null) {
+            item.setLinkedFormLayoutId(req.linkedFormLayoutId());
         }
 
         assertRouteMatchesType(item);

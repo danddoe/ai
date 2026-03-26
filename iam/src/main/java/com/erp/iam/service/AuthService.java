@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -88,7 +89,12 @@ public class AuthService {
         rt.setExpiresAt(Instant.now().plusSeconds(jwtProperties.getRefreshTokenExpirationSeconds()));
         refreshTokenRepository.save(rt);
 
-        return new TokenResult(accessToken, refreshToken, jwtService.getAccessTokenExpirationSeconds());
+        return new TokenResult(
+                accessToken,
+                refreshToken,
+                jwtService.getAccessTokenExpirationSeconds(),
+                effectiveLocale(tenantUser, tenant)
+        );
     }
 
     @Transactional
@@ -107,9 +113,10 @@ public class AuthService {
         if (!"ACTIVE".equals(user.getStatus())) {
             throw new AuthException("User account is not active");
         }
-        if (tenantUserRepository.findByTenantIdAndUserId(claims.getTenantId(), user.getId()).isEmpty()) {
-            throw new AuthException("User is not a member of this tenant");
-        }
+        TenantUser tenantUser = tenantUserRepository.findByTenantIdAndUserId(claims.getTenantId(), user.getId())
+                .orElseThrow(() -> new AuthException("User is not a member of this tenant"));
+        Tenant tenant = tenantRepository.findById(claims.getTenantId())
+                .orElseThrow(() -> new AuthException("Tenant not found"));
 
         List<String> roleNames = resolveRoleNames(claims.getTenantId(), user.getId());
         List<String> permissions = resolvePermissionCodes(claims.getTenantId(), user.getId());
@@ -125,7 +132,37 @@ public class AuthService {
         rt.setExpiresAt(Instant.now().plusSeconds(jwtProperties.getRefreshTokenExpirationSeconds()));
         refreshTokenRepository.save(rt);
 
-        return new TokenResult(accessToken, newRefreshToken, jwtService.getAccessTokenExpirationSeconds());
+        return new TokenResult(
+                accessToken,
+                newRefreshToken,
+                jwtService.getAccessTokenExpirationSeconds(),
+                effectiveLocale(tenantUser, tenant)
+        );
+    }
+
+    private static String effectiveLocale(TenantUser tenantUser, Tenant tenant) {
+        String u = tenantUser != null ? tenantUser.getPreferredLocale() : null;
+        if (u != null && !u.isBlank()) {
+            return normalizeLocaleTag(u);
+        }
+        String t = tenant != null ? tenant.getDefaultLocale() : null;
+        if (t != null && !t.isBlank()) {
+            return normalizeLocaleTag(t);
+        }
+        return null;
+    }
+
+    private static String normalizeLocaleTag(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String s = raw.trim().replace('_', '-');
+        int delim = s.indexOf('-');
+        String primary = delim > 0 ? s.substring(0, delim) : s;
+        if (primary.isBlank()) {
+            return null;
+        }
+        return primary.toLowerCase(Locale.ROOT);
     }
 
     @Transactional
@@ -185,11 +222,14 @@ public class AuthService {
         private final String accessToken;
         private final String refreshToken;
         private final long expiresInSeconds;
+        /** Effective UI locale: user preference, else tenant default. */
+        private final String preferredLocale;
 
-        public TokenResult(String accessToken, String refreshToken, long expiresInSeconds) {
+        public TokenResult(String accessToken, String refreshToken, long expiresInSeconds, String preferredLocale) {
             this.accessToken = accessToken;
             this.refreshToken = refreshToken;
             this.expiresInSeconds = expiresInSeconds;
+            this.preferredLocale = preferredLocale;
         }
 
         public String getAccessToken() {
@@ -202,6 +242,10 @@ public class AuthService {
 
         public long getExpiresInSeconds() {
             return expiresInSeconds;
+        }
+
+        public String getPreferredLocale() {
+            return preferredLocale;
         }
     }
 

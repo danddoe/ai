@@ -1,3 +1,4 @@
+import { Button, NumberInput, TextInput } from '@mantine/core';
 import type { EntityFieldDto } from '../../api/schemas';
 import type { LayoutActionType, LayoutV2, RegionRole, StructureSelection } from '../../types/formLayout';
 import { countItemsInRegion, countItemsInRow, isActionItem, isSafeActionHref, resolveLayoutItemField } from '../../utils/layoutV2';
@@ -68,18 +69,22 @@ export function StructurePanel({
           >
             <div className="builder-region-head">
               <span className="builder-role">{roleLabel(region.role)}</span>
-              <input
-                className="input input-inline"
+              <TextInput
+                className="input-inline"
+                size="xs"
                 value={region.title}
                 onClick={(e) => e.stopPropagation()}
                 onChange={(e) => onChange(M.setRegionTitle(layout, ri, e.target.value))}
                 readOnly={!schemaWritable}
                 aria-label={`Region ${ri + 1} title`}
+                styles={{ input: { minHeight: 28 } }}
               />
               <div className="builder-toolbar">
-                <button
+                <Button
                   type="button"
-                  className="btn btn-xs btn-secondary focusable"
+                  variant="default"
+                  size="xs"
+                  className="focusable"
                   disabled={!schemaWritable}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -87,10 +92,12 @@ export function StructurePanel({
                   }}
                 >
                   Region ↑
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
-                  className="btn btn-xs btn-secondary focusable"
+                  variant="default"
+                  size="xs"
+                  className="focusable"
                   disabled={!schemaWritable}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -98,10 +105,12 @@ export function StructurePanel({
                   }}
                 >
                   Region ↓
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
-                  className="btn btn-xs btn-secondary focusable"
+                  variant="default"
+                  size="xs"
+                  className="focusable"
                   disabled={!schemaWritable}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -109,10 +118,13 @@ export function StructurePanel({
                   }}
                 >
                   + Row
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
-                  className="btn btn-xs btn-danger focusable"
+                  color="red"
+                  variant="light"
+                  size="xs"
+                  className="focusable"
                   disabled={!schemaWritable}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -123,7 +135,7 @@ export function StructurePanel({
                   }}
                 >
                   Remove region
-                </button>
+                </Button>
               </div>
             </div>
             {region.rows.map((row, rowIdx) => (
@@ -138,9 +150,11 @@ export function StructurePanel({
                 <div className="builder-row-head">
                   <span className="builder-muted">Row {rowIdx + 1}</span>
                   <div className="builder-toolbar">
-                    <button
+                    <Button
                       type="button"
-                      className="btn btn-xs btn-secondary focusable"
+                      variant="default"
+                      size="xs"
+                      className="focusable"
                       disabled={!schemaWritable}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -148,10 +162,12 @@ export function StructurePanel({
                       }}
                     >
                       Row ↑
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
-                      className="btn btn-xs btn-secondary focusable"
+                      variant="default"
+                      size="xs"
+                      className="focusable"
                       disabled={!schemaWritable}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -159,10 +175,12 @@ export function StructurePanel({
                       }}
                     >
                       Row ↓
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
-                      className="btn btn-xs btn-secondary focusable"
+                      variant="default"
+                      size="xs"
+                      className="focusable"
                       disabled={!schemaWritable}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -170,10 +188,13 @@ export function StructurePanel({
                       }}
                     >
                       + Column
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
-                      className="btn btn-xs btn-danger focusable"
+                      color="red"
+                      variant="light"
+                      size="xs"
+                      className="focusable"
                       disabled={!schemaWritable}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -184,7 +205,7 @@ export function StructurePanel({
                       }}
                     >
                       Remove row
-                    </button>
+                    </Button>
                   </div>
                 </div>
                 <div className="builder-columns">
@@ -201,25 +222,27 @@ export function StructurePanel({
                       <div className="builder-column-head">
                         <label className="builder-span-label">
                           Span
-                          <input
-                            type="number"
+                          <NumberInput
+                            size="xs"
                             min={1}
                             max={12}
-                            className="input input-xs"
+                            w={56}
                             value={col.span}
                             onClick={(e) => e.stopPropagation()}
-                            onChange={(e) =>
+                            onChange={(v) =>
                               onChange(
-                                M.setColumnSpan(layout, ri, rowIdx, colIdx, Number(e.target.value) || 1)
+                                M.setColumnSpan(layout, ri, rowIdx, colIdx, typeof v === 'number' ? v : 1)
                               )
                             }
                             disabled={!schemaWritable}
                           />
                         </label>
                         <div className="builder-toolbar">
-                          <button
+                          <Button
                             type="button"
-                            className="btn btn-xs btn-secondary focusable"
+                            variant="default"
+                            size="xs"
+                            className="focusable"
                             disabled={!schemaWritable}
                             onClick={(e) => {
                               e.stopPropagation();
@@ -227,10 +250,12 @@ export function StructurePanel({
                             }}
                           >
                             Col ↑
-                          </button>
-                          <button
+                          </Button>
+                          <Button
                             type="button"
-                            className="btn btn-xs btn-secondary focusable"
+                            variant="default"
+                            size="xs"
+                            className="focusable"
                             disabled={!schemaWritable}
                             onClick={(e) => {
                               e.stopPropagation();
@@ -238,10 +263,11 @@ export function StructurePanel({
                             }}
                           >
                             Col ↓
-                          </button>
-                          <button
+                          </Button>
+                          <Button
                             type="button"
-                            className="btn btn-xs btn-primary focusable"
+                            size="xs"
+                            className="focusable"
                             disabled={!schemaWritable}
                             onClick={(e) => {
                               e.stopPropagation();
@@ -249,12 +275,14 @@ export function StructurePanel({
                             }}
                           >
                             Add field
-                          </button>
+                          </Button>
                           {schemaWritable && onAddActionItem ? (
                             <>
-                              <button
+                              <Button
                                 type="button"
-                                className="btn btn-xs btn-secondary focusable"
+                                variant="default"
+                                size="xs"
+                                className="focusable"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   onAddActionItem(
@@ -264,10 +292,12 @@ export function StructurePanel({
                                 }}
                               >
                                 + Save
-                              </button>
-                              <button
+                              </Button>
+                              <Button
                                 type="button"
-                                className="btn btn-xs btn-secondary focusable"
+                                variant="default"
+                                size="xs"
+                                className="focusable"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   onAddActionItem(
@@ -277,10 +307,12 @@ export function StructurePanel({
                                 }}
                               >
                                 + Cancel
-                              </button>
-                              <button
+                              </Button>
+                              <Button
                                 type="button"
-                                className="btn btn-xs btn-secondary focusable"
+                                variant="default"
+                                size="xs"
+                                className="focusable"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   const href = window.prompt('URL (https://… or /path)', 'https://');
@@ -299,12 +331,15 @@ export function StructurePanel({
                                 }}
                               >
                                 + Link
-                              </button>
+                              </Button>
                             </>
                           ) : null}
-                          <button
+                          <Button
                             type="button"
-                            className="btn btn-xs btn-danger focusable"
+                            color="red"
+                            variant="light"
+                            size="xs"
+                            className="focusable"
                             disabled={!schemaWritable}
                             onClick={(e) => {
                               e.stopPropagation();
@@ -314,7 +349,7 @@ export function StructurePanel({
                             }}
                           >
                             Remove col
-                          </button>
+                          </Button>
                         </div>
                       </div>
                       <ul className="builder-items">
@@ -324,6 +359,7 @@ export function StructurePanel({
                           const title = isBtn
                             ? item.label
                             : item.presentation?.label?.trim() ||
+                              resolved?.displayLabel?.trim() ||
                               resolved?.labelOverride?.trim() ||
                               resolved?.name ||
                               item.fieldSlug ||
@@ -370,9 +406,11 @@ export function StructurePanel({
                               </span>
                             </button>
                             <div className="builder-item-actions">
-                              <button
+                              <Button
                                 type="button"
-                                className="btn btn-xs btn-secondary focusable"
+                                variant="default"
+                                size="xs"
+                                className="focusable"
                                 disabled={!schemaWritable}
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -380,10 +418,12 @@ export function StructurePanel({
                                 }}
                               >
                                 ↑
-                              </button>
-                              <button
+                              </Button>
+                              <Button
                                 type="button"
-                                className="btn btn-xs btn-secondary focusable"
+                                variant="default"
+                                size="xs"
+                                className="focusable"
                                 disabled={!schemaWritable}
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -391,10 +431,13 @@ export function StructurePanel({
                                 }}
                               >
                                 ↓
-                              </button>
-                              <button
+                              </Button>
+                              <Button
                                 type="button"
-                                className="btn btn-xs btn-danger focusable"
+                                color="red"
+                                variant="light"
+                                size="xs"
+                                className="focusable"
                                 disabled={!schemaWritable}
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -403,7 +446,7 @@ export function StructurePanel({
                                 }}
                               >
                                 Remove
-                              </button>
+                              </Button>
                             </div>
                           </li>
                           );
@@ -419,30 +462,36 @@ export function StructurePanel({
       </div>
       <div className="builder-region-add">
         <span className="builder-muted">Add region:</span>
-        <button
+        <Button
           type="button"
-          className="btn btn-sm btn-secondary focusable"
+          variant="default"
+          size="sm"
+          className="focusable"
           disabled={!schemaWritable}
           onClick={() => onChange(M.addRegion(layout, 'header'))}
         >
           + Header
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
-          className="btn btn-sm btn-secondary focusable"
+          variant="default"
+          size="sm"
+          className="focusable"
           disabled={!schemaWritable}
           onClick={() => onChange(M.addRegion(layout, 'tab'))}
         >
           + Tab
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
-          className="btn btn-sm btn-secondary focusable"
+          variant="default"
+          size="sm"
+          className="focusable"
           disabled={!schemaWritable}
           onClick={() => onChange(M.addRegion(layout, 'detail'))}
         >
           + Detail
-        </button>
+        </Button>
       </div>
     </section>
   );

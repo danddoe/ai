@@ -42,6 +42,10 @@ public class EntityDefinition {
     @Column(name = "category_key", length = 64)
     private String categoryKey;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "definition_scope", nullable = false, length = 32)
+    private DefinitionScope definitionScope = DefinitionScope.TENANT_OBJECT;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -87,6 +91,9 @@ public class EntityDefinition {
 
     public String getCategoryKey() { return categoryKey; }
     public void setCategoryKey(String categoryKey) { this.categoryKey = categoryKey; }
+
+    public DefinitionScope getDefinitionScope() { return definitionScope; }
+    public void setDefinitionScope(DefinitionScope definitionScope) { this.definitionScope = definitionScope; }
 
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }

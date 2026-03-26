@@ -1,0 +1,44 @@
+{
+  "appTitle": "ERP",
+  "header": {
+    "expandSidebar": "Expand sidebar",
+    "collapseSidebar": "Collapse sidebar",
+    "formBuilderBadge": "Form builder",
+    "formBuilderTitle": "Form builder — module nav hidden",
+    "listDesignerBadge": "List designer",
+    "listDesignerTitle": "List view designer — module nav hidden",
+    "logOut": "Log out"
+  },
+  "nav": {
+    "moduleNavAria": "Module navigation",
+    "expandNav": "Expand navigation",
+    "wipBadge": "WIP",
+    "wipTitle": "Design in progress",
+    "loadError": "Could not load navigation: {{message}}"
+  },
+  "login": {
+    "checkingSession": "Checking session…",
+    "signInTitle": "Sign in",
+    "blurb": "API gateway + IAM. With cookie mode, a refresh token is stored in an httpOnly cookie.",
+    "tenantLabel": "Tenant slug or ID",
+    "email": "Email",
+    "password": "Password",
+    "signInFailed": "Sign-in failed",
+    "loginFailed": "Login failed",
+    "signingIn": "Signing in…",
+    "signIn": "Sign in"
+  },
+  "home": {
+    "title": "Home",
+    "welcome": "Welcome to the ERP portal. Use the search bar (Ctrl+K / ⌘K) to jump anywhere, or open a module below.",
+    "general": "General",
+    "navErrorBefore": "Navigation could not be loaded. You can still open",
+    "navErrorLink": "Entities",
+    "navErrorAfter": "."
+  },
+  "language": {
+    "label": "Language",
+    "en": "English",
+    "es": "Español"
+  }
+}

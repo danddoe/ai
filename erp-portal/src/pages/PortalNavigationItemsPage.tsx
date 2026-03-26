@@ -1,6 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
+  Anchor,
+  Button,
+  Checkbox,
+  Code,
+  Group,
+  Select,
+  Stack,
+  Text,
+  Textarea,
+  TextInput,
+  Title,
+} from '@mantine/core';
+import type { ColumnDef } from '@tanstack/react-table';
+import {
   createNavigationItem,
   listEntities,
   listNavigationAdminItems,
@@ -10,6 +24,7 @@ import {
   type NavigationItemPatchRequest,
 } from '../api/schemas';
 import { useAuth } from '../auth/AuthProvider';
+import { DataTable } from '../components/DataTable';
 import { Modal } from '../components/Modal';
 import { clearPortalNavigationCache } from '../hooks/usePortalNavigation';
 import { formatCategoryKeyLabel, PORTAL_NAV_CATEGORY_KEYS } from '../utils/portalNavCategoryKeys';
@@ -48,6 +63,11 @@ const NAV_ITEM_TYPES: { value: string; label: string }[] = [
   { value: 'external', label: 'External (URL)' },
   { value: 'section', label: 'Section (heading)' },
   { value: 'divider', label: 'Divider' },
+];
+
+const DESIGN_STATUS_OPTIONS: { value: 'PUBLISHED' | 'WIP'; label: string }[] = [
+  { value: 'PUBLISHED', label: 'Published (live in shell)' },
+  { value: 'WIP', label: 'WIP (draft — shows indicator in nav)' },
 ];
 
 function shortId(id: string): string {
@@ -107,6 +127,7 @@ export function PortalNavigationItemsPage() {
   const [active, setActive] = useState(true);
   const [promoteToGlobal, setPromoteToGlobal] = useState(false);
   const [navType, setNavType] = useState('internal');
+  const [designStatus, setDesignStatus] = useState<'PUBLISHED' | 'WIP'>('PUBLISHED');
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -201,9 +222,10 @@ export function PortalNavigationItemsPage() {
     setEntityRouteTarget('list');
     setEntitiesPickList(null);
     setNavType('internal');
+    setDesignStatus('PUBLISHED');
   };
 
-  const openEdit = (row: NavigationAdminItemDto) => {
+  const openEdit = useCallback((row: NavigationAdminItemDto) => {
     setModalMode('edit');
     setEditing(row);
     setFormError(null);
@@ -220,7 +242,68 @@ export function PortalNavigationItemsPage() {
     setActive(row.active);
     setPromoteToGlobal(false);
     setNavType(row.type || 'internal');
-  };
+    setDesignStatus(row.designStatus === 'WIP' ? 'WIP' : 'PUBLISHED');
+  }, []);
+
+  const navColumns = useMemo<ColumnDef<NavigationAdminItemDto>[]>(
+    () => [
+      {
+        id: 'icon',
+        header: '',
+        meta: { thStyle: { width: 44 }, tdStyle: { verticalAlign: 'middle' } },
+        cell: ({ row }) => <PortalNavIcon name={row.original.icon} className="portal-nav-icon" />,
+      },
+      { accessorKey: 'label', header: 'Label' },
+      {
+        id: 'type',
+        header: 'Type',
+        cell: ({ row }) => <Code fz="sm">{row.original.type}</Code>,
+      },
+      {
+        id: 'route',
+        header: 'Route',
+        cell: ({ row }) => (
+          <span style={{ wordBreak: 'break-all' }}>{row.original.routePath ?? '—'}</span>
+        ),
+      },
+      {
+        id: 'category',
+        header: 'Category',
+        cell: ({ row }) => row.original.categoryKey ?? '—',
+      },
+      { accessorKey: 'sortOrder', header: 'Sort' },
+      {
+        id: 'scope',
+        header: 'Scope',
+        cell: ({ row }) => (row.original.tenantId ? 'Tenant' : 'Global'),
+      },
+      {
+        id: 'active',
+        header: 'Active',
+        cell: ({ row }) => (row.original.active ? 'Yes' : 'No'),
+      },
+      {
+        id: 'design',
+        header: 'Design',
+        cell: ({ row }) => (row.original.designStatus === 'WIP' ? 'WIP' : 'Published'),
+      },
+      {
+        id: 'rowId',
+        header: 'Id',
+        cell: ({ row }) => <Code fz="sm">{shortId(row.original.id)}</Code>,
+      },
+      {
+        id: 'actions',
+        header: '',
+        cell: ({ row }) => (
+          <Button size="xs" variant="default" onClick={() => openEdit(row.original)}>
+            Edit
+          </Button>
+        ),
+      },
+    ],
+    [openEdit]
+  );
 
   const closeModal = () => {
     setModalMode('closed');
@@ -273,6 +356,7 @@ export function PortalNavigationItemsPage() {
         requiredPermissions: parseTokenTextarea(requiredPermissionsText),
         requiredRoles: parseTokenTextarea(requiredRolesText),
         scope: createScope,
+        designStatus,
       });
       clearPortalNavigationCache();
       closeModal();
@@ -310,6 +394,7 @@ export function PortalNavigationItemsPage() {
         requiredPermissions: parseTokenTextarea(requiredPermissionsText),
         requiredRoles: parseTokenTextarea(requiredRolesText),
         active,
+        designStatus,
       };
 
       const rt = routePath.trim();
@@ -367,104 +452,65 @@ export function PortalNavigationItemsPage() {
   const modalOpen = modalMode !== 'closed';
 
   return (
-    <div className="page-shell page-shell-wide">
-      <nav className="breadcrumb">
-        <Link to="/home">Home</Link>
-        <span aria-hidden> / </span>
-        <span>Navigation items</span>
-      </nav>
-      <header className="page-header">
-        <div>
-          <h1 className="page-title">Portal navigation items</h1>
-          <p className="page-sub">Search, add, and edit entries you are allowed to manage.</p>
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button type="button" className="btn btn-primary btn-sm" onClick={openCreate}>
-            Add item
-          </button>
-          <button type="button" className="btn btn-secondary btn-sm" onClick={() => void load()}>
-            Reload
-          </button>
-        </div>
-      </header>
+    <Stack gap="lg" className="page-shell page-shell-wide" maw={1400}>
+      <Group gap="xs" wrap="wrap">
+        <Anchor component={Link} to="/home" size="sm">
+          Home
+        </Anchor>
+        <Text span c="dimmed" aria-hidden>
+          /
+        </Text>
+        <Text span size="sm">
+          Navigation items
+        </Text>
+      </Group>
 
-      <div style={{ marginBottom: 16, display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
-        <label className="field-label" style={{ margin: 0, flex: '1 1 240px', minWidth: 200 }}>
-          <span className="builder-muted" style={{ fontSize: '0.8125rem' }}>
-            Search
-          </span>
-          <input
-            className="input"
-            placeholder="Label, description, route, category, keywords…"
-            value={searchDraft}
-            onChange={(e) => setSearchDraft(e.target.value.slice(0, 200))}
-            aria-label="Search navigation items"
-          />
-        </label>
-      </div>
+      <Group justify="space-between" align="flex-start" wrap="wrap" gap="md">
+        <Stack gap={4}>
+          <Title order={1} size="h2">
+            Portal navigation items
+          </Title>
+          <Text c="dimmed" size="sm">
+            Search, add, and edit entries you are allowed to manage.
+          </Text>
+        </Stack>
+        <Group gap="xs">
+          <Button size="sm" onClick={openCreate}>
+            Add item
+          </Button>
+          <Button size="sm" variant="default" onClick={() => void load()}>
+            Reload
+          </Button>
+        </Group>
+      </Group>
+
+      <TextInput
+        label="Search"
+        placeholder="Label, description, route, category, keywords…"
+        value={searchDraft}
+        onChange={(e) => setSearchDraft(e.target.value.slice(0, 200))}
+        aria-label="Search navigation items"
+        style={{ flex: '1 1 240px', maxWidth: 480 }}
+        size="sm"
+      />
 
       {loadError && (
-        <p role="alert" className="text-error">
+        <Text role="alert" c="red" size="sm">
           {loadError}
-        </p>
+        </Text>
       )}
 
-      <div className="records-table-wrap">
-        <table className="records-table">
-          <thead>
-            <tr>
-              <th aria-label="Icon" />
-              <th>Label</th>
-              <th>Type</th>
-              <th>Route</th>
-              <th>Category</th>
-              <th>Sort</th>
-              <th>Scope</th>
-              <th>Active</th>
-              <th>Id</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((row) => (
-              <tr key={row.id}>
-                <td style={{ width: 36, verticalAlign: 'middle' }}>
-                  <PortalNavIcon name={row.icon} className="portal-nav-icon" />
-                </td>
-                <td>{row.label}</td>
-                <td>
-                  <code>{row.type}</code>
-                </td>
-                <td>
-                  <span style={{ wordBreak: 'break-all' }}>{row.routePath ?? '—'}</span>
-                </td>
-                <td>{row.categoryKey ?? '—'}</td>
-                <td>{row.sortOrder}</td>
-                <td>{row.tenantId ? 'Tenant' : 'Global'}</td>
-                <td>{row.active ? 'Yes' : 'No'}</td>
-                <td>
-                  <code>{shortId(row.id)}</code>
-                </td>
-                <td>
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => openEdit(row)}>
-                    Edit
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable data={filtered} columns={navColumns} getRowId={(r) => r.id} minWidth={720} />
 
       {items && items.length === 0 && !loadError && (
-        <p className="builder-muted" style={{ marginTop: 12 }}>
+        <Text size="sm" c="dimmed">
           No navigation items returned for your account.
-        </p>
+        </Text>
       )}
       {items && filtered.length === 0 && items.length > 0 && (
-        <p className="builder-muted" style={{ marginTop: 12 }}>
+        <Text size="sm" c="dimmed">
           No rows match the current search.
-        </p>
+        </Text>
       )}
 
       {modalOpen && (
@@ -473,19 +519,17 @@ export function PortalNavigationItemsPage() {
           title={modalMode === 'create' ? 'Add navigation item' : `Edit: ${editing?.label ?? ''}`}
           onClose={closeModal}
           footer={
-            <>
-              <button type="button" className="btn btn-secondary" onClick={closeModal} disabled={saving}>
+            <Group justify="flex-end" gap="sm">
+              <Button variant="default" onClick={closeModal} disabled={saving}>
                 Cancel
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary"
+              </Button>
+              <Button
                 onClick={() => void (modalMode === 'create' ? submitCreate() : submitEdit())}
                 disabled={saving}
               >
                 {saving ? (modalMode === 'create' ? 'Creating…' : 'Saving…') : modalMode === 'create' ? 'Create' : 'Save'}
-              </button>
-            </>
+              </Button>
+            </Group>
           }
         >
           {formError && (
@@ -503,131 +547,95 @@ export function PortalNavigationItemsPage() {
             (<code>/home</code>, <code>/entities</code>, <code>/audit</code>, <code>/entities/…/audit</code>, or entity records URLs). External opens in a new tab; section and
             divider may leave route empty.
           </p>
-          <div style={{ display: 'grid', gap: 12 }}>
+          <Stack gap="sm">
             {modalMode === 'create' && canManageGlobalNavigation && (
-              <label className="field-label">
-                Scope
-                <select
-                  className="input"
-                  value={createScope}
-                  onChange={(e) => setCreateScope(e.target.value as 'TENANT' | 'GLOBAL')}
-                  aria-label="Navigation item scope"
-                >
-                  <option value="TENANT">Tenant (current tenant)</option>
-                  <option value="GLOBAL">Global (all tenants)</option>
-                </select>
-              </label>
-            )}
-            <label className="field-label">
-              Parent
-              <select
-                className="input"
-                value={parentChoice}
-                onChange={(e) => setParentChoice(e.target.value)}
-                aria-label="Parent item"
-              >
-                {modalMode === 'create' ? (
-                  <option value="">— Root —</option>
-                ) : (
-                  <option value={PARENT_KEEP}>Keep current parent</option>
-                )}
-                {parentOptions.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.label} ({shortId(p.id)})
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field-label">
-              Sort order
-              <input
-                className="input"
-                type="number"
-                value={sortOrder}
-                onChange={(e) => setSortOrder(e.target.value)}
+              <Select
+                label="Scope"
+                value={createScope}
+                onChange={(v) => v && setCreateScope(v as 'TENANT' | 'GLOBAL')}
+                aria-label="Navigation item scope"
+                data={[
+                  { value: 'TENANT', label: 'Tenant (current tenant)' },
+                  { value: 'GLOBAL', label: 'Global (all tenants)' },
+                ]}
               />
-            </label>
-            <label className="field-label">
-              Type
-              <select
-                className="input"
-                value={navType}
-                onChange={(e) => setNavType(e.target.value)}
-                aria-label="Navigation item type"
-              >
-                {NAV_ITEM_TYPES.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            )}
+            <Select
+              label="Parent"
+              value={parentChoice}
+              onChange={(v) => setParentChoice(v ?? '')}
+              aria-label="Parent item"
+              data={[
+                ...(modalMode === 'create'
+                  ? [{ value: '', label: '— Root —' }]
+                  : [{ value: PARENT_KEEP, label: 'Keep current parent' }]),
+                ...parentOptions.map((p) => ({ value: p.id, label: `${p.label} (${shortId(p.id)})` })),
+              ]}
+            />
+            <TextInput
+              label="Sort order"
+              type="number"
+              value={sortOrder}
+              onChange={(e) => setSortOrder(e.target.value)}
+            />
+            <Select
+              label="Type"
+              value={navType}
+              onChange={(v) => v && setNavType(v)}
+              aria-label="Navigation item type"
+              data={NAV_ITEM_TYPES.map((o) => ({ value: o.value, label: o.label }))}
+            />
             {modalMode === 'create' && navType === 'internal' && (
               <>
-                <label className="field-label">
-                  Entity (sets route)
-                  <select
-                    className="input"
-                    value={entityPickerId}
-                    onChange={(e) => {
-                      const id = e.target.value;
-                      setEntityPickerId(id);
-                      if (id) applyEntityRoute(id, entityRouteTarget);
-                    }}
-                    aria-label="Pick entity for route"
-                  >
-                    <option value="">— Select entity —</option>
-                    {entitiesPickList?.map((e) => (
-                      <option key={e.id} value={e.id}>
-                        {e.name} ({e.slug})
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="field-label">
-                  Entity route target
-                  <select
-                    className="input"
-                    value={entityRouteTarget}
-                    onChange={(e) => {
-                      const t = e.target.value as 'list' | 'new';
-                      setEntityRouteTarget(t);
-                      if (entityPickerId) applyEntityRoute(entityPickerId, t);
-                    }}
-                    aria-label="Records list or new record"
-                  >
-                    <option value="list">Records list</option>
-                    <option value="new">New record</option>
-                  </select>
-                </label>
+                <Select
+                  label="Entity (sets route)"
+                  placeholder="— Select entity —"
+                  value={entityPickerId || null}
+                  onChange={(id) => {
+                    setEntityPickerId(id ?? '');
+                    if (id) applyEntityRoute(id, entityRouteTarget);
+                  }}
+                  aria-label="Pick entity for route"
+                  data={(entitiesPickList ?? []).map((e) => ({
+                    value: e.id,
+                    label: `${e.name} (${e.slug})`,
+                  }))}
+                />
+                <Select
+                  label="Entity route target"
+                  value={entityRouteTarget}
+                  onChange={(t) => {
+                    const next = (t ?? 'list') as 'list' | 'new';
+                    setEntityRouteTarget(next);
+                    if (entityPickerId) applyEntityRoute(entityPickerId, next);
+                  }}
+                  aria-label="Records list or new record"
+                  data={[
+                    { value: 'list', label: 'Records list' },
+                    { value: 'new', label: 'New record' },
+                  ]}
+                />
               </>
             )}
-            <label className="field-label">
-              Route path
-              <input
-                className="input"
-                value={routePath}
-                onChange={(e) => setRoutePath(e.target.value)}
-                placeholder={
-                  navType === 'internal'
-                    ? '/home, /entities, /audit, /entities/{uuid}/audit, or /entities/{uuid}/records…'
-                    : navType === 'external'
-                      ? 'https://…'
-                      : 'Optional for section / divider'
-                }
-              />
-            </label>
-            <label className="field-label">
-              Label
-              <input className="input" value={label} onChange={(e) => setLabel(e.target.value)} />
-            </label>
-            <label className="field-label">
-              Description
-              <input className="input" value={description} onChange={(e) => setDescription(e.target.value)} />
-            </label>
-            <label className="field-label">
-              Icon
-              <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <TextInput
+              label="Route path"
+              value={routePath}
+              onChange={(e) => setRoutePath(e.target.value)}
+              placeholder={
+                navType === 'internal'
+                  ? '/home, /entities, /audit, /entities/{uuid}/audit, or /entities/{uuid}/records…'
+                  : navType === 'external'
+                    ? 'https://…'
+                    : 'Optional for section / divider'
+              }
+            />
+            <TextInput label="Label" value={label} onChange={(e) => setLabel(e.target.value)} />
+            <TextInput label="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
+            <div>
+              <Text size="sm" fw={500} mb={6}>
+                Icon
+              </Text>
+              <Group gap="sm" align="center" wrap="wrap">
                 <div style={{ width: 22, display: 'flex', justifyContent: 'center', flexShrink: 0 }} aria-hidden>
                   {icon.trim() ? (
                     <PortalNavIcon name={icon} className="portal-nav-icon" />
@@ -635,81 +643,82 @@ export function PortalNavigationItemsPage() {
                     <span className="builder-muted">—</span>
                   )}
                 </div>
-                <select
-                  className="input"
+                <Select
                   style={{ flex: '1 1 200px', minWidth: 160 }}
-                  value={icon}
-                  onChange={(e) => setIcon(e.target.value)}
+                  placeholder="— None —"
+                  value={icon || null}
+                  onChange={(v) => setIcon(v ?? '')}
                   aria-label="Navigation icon"
-                >
-                  <option value="">— None —</option>
-                  {PORTAL_NAV_ICON_OPTIONS.map((o) => (
-                    <option key={o.key} value={o.key}>
-                      {o.label}
-                    </option>
-                  ))}
-                  {iconIsLegacy && (
-                    <option value={icon.trim()}>Legacy key: {icon.trim()}</option>
-                  )}
-                </select>
-              </div>
-              <span className="builder-muted" style={{ fontWeight: 400, marginTop: 4 }}>
+                  clearable
+                  data={[
+                    ...PORTAL_NAV_ICON_OPTIONS.map((o) => ({ value: o.key, label: o.label })),
+                    ...(iconIsLegacy && icon.trim()
+                      ? [{ value: icon.trim(), label: `Legacy key: ${icon.trim()}` }]
+                      : []),
+                  ]}
+                />
+              </Group>
+              <Text size="xs" c="dimmed" mt={4}>
                 Stored as a short key (e.g. <code>layers</code>); the shell renders SVGs for known keys.
-              </span>
-            </label>
-            <label className="field-label">
-              Category key
-              <select
-                className="input"
-                value={categoryKey}
-                onChange={(e) => setCategoryKey(e.target.value)}
+              </Text>
+            </div>
+            <div>
+              <Select
+                label="Category key"
+                placeholder="— None —"
+                value={categoryKey || null}
+                onChange={(v) => setCategoryKey(v ?? '')}
                 aria-label="Category key"
-              >
-                <option value="">— None —</option>
-                {categoryKeySelectOptions.map((k) => (
-                  <option key={k} value={k}>
-                    {formatCategoryKeyLabel(k)} ({k})
-                  </option>
-                ))}
-              </select>
-              <span className="builder-muted" style={{ fontWeight: 400, marginTop: 4 }}>
-                Vocabulary matches entity-builder <code>EntityCategoryKeys</code> (no dedicated API yet).
-              </span>
-            </label>
-            <label className="field-label">
-              Search keywords (comma or newline separated)
-              <textarea className="input" rows={3} value={searchKeywordsText} onChange={(e) => setSearchKeywordsText(e.target.value)} />
-            </label>
-            <label className="field-label">
-              Required permissions
-              <textarea
-                className="input"
-                rows={2}
-                value={requiredPermissionsText}
-                onChange={(e) => setRequiredPermissionsText(e.target.value)}
+                clearable
+                data={categoryKeySelectOptions.map((k) => ({
+                  value: k,
+                  label: `${formatCategoryKeyLabel(k)} (${k})`,
+                }))}
               />
-            </label>
-            <label className="field-label">
-              Required roles
-              <textarea className="input" rows={2} value={requiredRolesText} onChange={(e) => setRequiredRolesText(e.target.value)} />
-            </label>
+              <Text size="xs" c="dimmed" mt={4}>
+                Vocabulary matches entity-builder <code>EntityCategoryKeys</code> (no dedicated API yet).
+              </Text>
+            </div>
+            <Textarea
+              label="Search keywords (comma or newline separated)"
+              rows={3}
+              value={searchKeywordsText}
+              onChange={(e) => setSearchKeywordsText(e.target.value)}
+            />
+            <Textarea
+              label="Required permissions"
+              rows={2}
+              value={requiredPermissionsText}
+              onChange={(e) => setRequiredPermissionsText(e.target.value)}
+            />
+            <Textarea
+              label="Required roles"
+              rows={2}
+              value={requiredRolesText}
+              onChange={(e) => setRequiredRolesText(e.target.value)}
+            />
+            <Select
+              label="Design status"
+              value={designStatus}
+              onChange={(v) => v && setDesignStatus(v as 'PUBLISHED' | 'WIP')}
+              aria-label="Navigation item design status"
+              data={DESIGN_STATUS_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+            />
             {modalMode === 'edit' && (
               <>
-                <label className="field-label row" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
-                  <span>Active</span>
-                </label>
+                <Checkbox checked={active} onChange={(e) => setActive(e.currentTarget.checked)} label="Active" />
                 {canManageGlobalNavigation && editing?.tenantId ? (
-                  <label className="field-label row" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <input type="checkbox" checked={promoteToGlobal} onChange={(e) => setPromoteToGlobal(e.target.checked)} />
-                    <span>Promote to global</span>
-                  </label>
+                  <Checkbox
+                    checked={promoteToGlobal}
+                    onChange={(e) => setPromoteToGlobal(e.currentTarget.checked)}
+                    label="Promote to global"
+                  />
                 ) : null}
               </>
             )}
-          </div>
+          </Stack>
         </Modal>
       )}
-    </div>
+    </Stack>
   );
 }

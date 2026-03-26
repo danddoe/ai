@@ -1,5 +1,6 @@
 package com.erp.entitybuilder.web.v1.dto;
 
+import com.erp.entitybuilder.domain.DefinitionScope;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
@@ -18,6 +19,7 @@ public class RelationshipDtos {
             String fromFieldSlug,
             String toFieldSlug,
             String cardinality,
+            DefinitionScope definitionScope,
             Instant createdAt,
             Instant updatedAt
     ) {}

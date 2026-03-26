@@ -15,8 +15,93 @@ public class RecordFilterSqlBuilder {
     public void append(StringBuilder sql, List<Object> params, ResolvedFilter node) {
         if (node instanceof ResolvedFilter.ResolvedGroup g) {
             appendGroup(sql, params, g);
+        } else if (node instanceof ResolvedFilter.ResolvedMetadataClause m) {
+            appendMetadataClause(sql, params, m);
         } else if (node instanceof ResolvedFilter.ResolvedClause c) {
             appendClause(sql, params, c);
+        }
+    }
+
+    private static void appendMetadataClause(StringBuilder sql, List<Object> params, ResolvedFilter.ResolvedMetadataClause c) {
+        String col = c.metadataField().sqlColumn();
+        switch (c.metadataField()) {
+            case CREATED_AT, UPDATED_AT -> appendMetadataInstant(sql, params, col, c.op(), c.bindParams());
+            case CREATED_BY, UPDATED_BY -> appendMetadataUuid(sql, params, col, c.op(), c.bindParams());
+        }
+    }
+
+    private static void appendMetadataInstant(StringBuilder sql, List<Object> params, String col, ResolvedFilter.ClauseOp op, List<Object> bindParams) {
+        switch (op) {
+            case IS_NULL -> sql.append(col).append(" IS NULL");
+            case IS_NOT_NULL -> sql.append(col).append(" IS NOT NULL");
+            case EQ -> {
+                sql.append(col).append(" = ?");
+                params.add(bindParams.get(0));
+            }
+            case NE -> {
+                sql.append("(").append(col).append(" IS NULL OR ").append(col).append(" <> ?)");
+                params.add(bindParams.get(0));
+            }
+            case GT -> {
+                sql.append(col).append(" > ?");
+                params.add(bindParams.get(0));
+            }
+            case GTE -> {
+                sql.append(col).append(" >= ?");
+                params.add(bindParams.get(0));
+            }
+            case LT -> {
+                sql.append(col).append(" < ?");
+                params.add(bindParams.get(0));
+            }
+            case LTE -> {
+                sql.append(col).append(" <= ?");
+                params.add(bindParams.get(0));
+            }
+            case BETWEEN -> {
+                sql.append(col).append(" >= ? AND ").append(col).append(" <= ?");
+                params.add(bindParams.get(0));
+                params.add(bindParams.get(1));
+            }
+            case IN -> {
+                sql.append(col).append(" IN (");
+                for (int i = 0; i < bindParams.size(); i++) {
+                    if (i > 0) {
+                        sql.append(',');
+                    }
+                    sql.append('?');
+                }
+                sql.append(')');
+                params.addAll(bindParams);
+            }
+            default -> throw new IllegalStateException("metadata instant op " + op);
+        }
+    }
+
+    private static void appendMetadataUuid(StringBuilder sql, List<Object> params, String col, ResolvedFilter.ClauseOp op, List<Object> bindParams) {
+        switch (op) {
+            case IS_NULL -> sql.append(col).append(" IS NULL");
+            case IS_NOT_NULL -> sql.append(col).append(" IS NOT NULL");
+            case EQ -> {
+                sql.append(col).append(" = ?");
+                params.add(bindParams.get(0));
+            }
+            case NE -> {
+                sql.append("(").append(col).append(" IS NULL OR ").append(col).append(" <> ?)");
+                params.add(bindParams.get(0));
+            }
+            case IN -> {
+                sql.append(col).append(" IN (");
+                for (int i = 0; i < bindParams.size(); i++) {
+                    if (i > 0) {
+                        sql.append(',');
+                    }
+                    sql.append('?');
+                }
+                sql.append(')');
+                params.addAll(bindParams);
+            }
+            default -> throw new IllegalStateException("metadata uuid op " + op);
         }
     }
 

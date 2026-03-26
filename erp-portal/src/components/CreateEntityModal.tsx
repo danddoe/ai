@@ -1,6 +1,8 @@
 import { FormEvent, useState } from 'react';
+import { Button, Group, Radio, Stack, Text, Textarea, TextInput } from '@mantine/core';
 import { Modal } from './Modal';
-import { createEntity, type EntityDto } from '../api/schemas';
+import { createEntity, type DefinitionScope, type EntityDto } from '../api/schemas';
+import { useAuth } from '../auth/AuthProvider';
 
 type Props = {
   onClose: () => void;
@@ -8,9 +10,11 @@ type Props = {
 };
 
 export function CreateEntityModal({ onClose, onCreated }: Props) {
+  const { canPlatformSchemaWrite } = useAuth();
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
   const [description, setDescription] = useState('');
+  const [definitionScope, setDefinitionScope] = useState<DefinitionScope>('TENANT_OBJECT');
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
@@ -23,6 +27,7 @@ export function CreateEntityModal({ onClose, onCreated }: Props) {
         name: name.trim(),
         slug: slug.trim(),
         description: description.trim() || undefined,
+        ...(canPlatformSchemaWrite ? { definitionScope } : {}),
       });
       onCreated(dto);
       onClose();
@@ -38,48 +43,90 @@ export function CreateEntityModal({ onClose, onCreated }: Props) {
       title="New entity"
       onClose={onClose}
       footer={
-        <>
-          <button type="button" className="btn btn-secondary" onClick={onClose}>
+        <Group justify="flex-end" gap="sm">
+          <Button variant="default" onClick={onClose}>
             Cancel
-          </button>
-          <button type="submit" form="create-entity-form" className="btn btn-primary" disabled={pending}>
+          </Button>
+          <Button type="submit" form="create-entity-form" loading={pending}>
             {pending ? 'Creating…' : 'Create'}
-          </button>
-        </>
+          </Button>
+        </Group>
       }
     >
-      <form id="create-entity-form" onSubmit={(e) => void onSubmit(e)} style={{ display: 'grid', gap: 12 }}>
-        <label className="field-label">
-          Name
-          <input
-            className="input"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
+      <form id="create-entity-form" onSubmit={(e) => void onSubmit(e)}>
+        <Stack gap="md">
+          <TextInput label="Name" value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
+          <TextInput
+            label="Slug"
+            value={slug}
+            onChange={(e) => setSlug(e.target.value)}
             required
-            autoFocus
+            description={
+              <Text size="xs" c="dimmed" component="span">
+                Unique per tenant, e.g. <code>sales_order</code>
+              </Text>
+            }
           />
-        </label>
-        <label className="field-label">
-          Slug
-          <input className="input" value={slug} onChange={(e) => setSlug(e.target.value)} required />
-          <span className="builder-muted" style={{ fontSize: '0.75rem', fontWeight: 400 }}>
-            Unique per tenant, e.g. <code>sales_order</code>
-          </span>
-        </label>
-        <label className="field-label">
-          Description <span className="builder-muted">(optional)</span>
-          <textarea
-            className="input"
+          <Textarea
+            label="Description"
+            description="Optional"
             rows={2}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
           />
-        </label>
-        {error && (
-          <p role="alert" className="text-error">
-            {error}
-          </p>
-        )}
+
+          {canPlatformSchemaWrite ? (
+            <Radio.Group
+              label="Entity scope"
+              value={definitionScope}
+              onChange={(v) => setDefinitionScope(v as DefinitionScope)}
+            >
+              <Stack gap="xs" mt="xs">
+                <Radio
+                  value="TENANT_OBJECT"
+                  label={
+                    <Stack gap={2}>
+                      <Text size="sm" fw={600}>
+                        Tenant entity
+                      </Text>
+                      <Text size="xs" c="dimmed">
+                        Default for normal tenant work; editable with tenant schema write.
+                      </Text>
+                    </Stack>
+                  }
+                />
+                <Radio
+                  value="STANDARD_OBJECT"
+                  label={
+                    <Stack gap={2}>
+                      <Text size="sm" fw={600}>
+                        Core (catalog) entity
+                      </Text>
+                      <Text size="xs" c="dimmed">
+                        Platform catalog; definition changes require full platform schema write.
+                      </Text>
+                    </Stack>
+                  }
+                />
+              </Stack>
+            </Radio.Group>
+          ) : (
+            <div>
+              <Text size="sm" fw={500} mb={4}>
+                Entity scope
+              </Text>
+              <Text size="sm" c="dimmed">
+                New entities are created as <strong>tenant entities</strong>.
+              </Text>
+            </div>
+          )}
+
+          {error && (
+            <Text role="alert" c="red" size="sm">
+              {error}
+            </Text>
+          )}
+        </Stack>
       </form>
     </Modal>
   );

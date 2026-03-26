@@ -126,4 +126,61 @@ class RecordListViewsE2ETest extends AbstractEntityBuilderE2ETest {
         );
         assertThat(getAfterResp.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
+
+    @Test
+    void createListView_withWipStatus_persists() {
+        Assumptions.assumeTrue(jdbcTemplate != null, "E2E skipped: no CockroachDB connection");
+
+        UUID userId = UUID.randomUUID();
+        UUID tenantId = UUID.randomUUID();
+        var headers = authHeaders(userId, tenantId, SCHEMA_PERMS);
+
+        Map<String, Object> createEntity = Map.of("name", "WIP Order", "slug", "order_wip_rlv", "status", "ACTIVE");
+        ResponseEntity<Map> entityResp = restTemplate.exchange(
+                baseUrl + "/v1/entities",
+                HttpMethod.POST,
+                new HttpEntity<>(createEntity, headers),
+                Map.class
+        );
+        assertThat(entityResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        String entityId = String.valueOf(entityResp.getBody().get("id"));
+
+        Map<String, Object> createField = Map.of(
+                "name", "Note",
+                "slug", "note",
+                "fieldType", "text",
+                "required", false,
+                "pii", false
+        );
+        ResponseEntity<Map> fieldResp = restTemplate.exchange(
+                baseUrl + "/v1/entities/" + entityId + "/fields",
+                HttpMethod.POST,
+                new HttpEntity<>(createField, headers),
+                Map.class
+        );
+        assertThat(fieldResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        Map<String, Object> col0 = new LinkedHashMap<>();
+        col0.put("fieldSlug", "note");
+        col0.put("order", 0);
+        Map<String, Object> definition = new LinkedHashMap<>();
+        definition.put("version", 1);
+        definition.put("columns", List.of(col0));
+        definition.put("showRowActions", true);
+
+        Map<String, Object> create = new LinkedHashMap<>();
+        create.put("name", "Draft list");
+        create.put("definition", definition);
+        create.put("isDefault", false);
+        create.put("status", "WIP");
+
+        ResponseEntity<Map> createResp = restTemplate.exchange(
+                baseUrl + "/v1/entities/" + entityId + "/record-list-views",
+                HttpMethod.POST,
+                new HttpEntity<>(create, headers),
+                Map.class
+        );
+        assertThat(createResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(createResp.getBody().get("status")).isEqualTo("WIP");
+    }
 }

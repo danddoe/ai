@@ -1,3 +1,4 @@
+import { NumberInput, Select, Stack, Text, TextInput } from '@mantine/core';
 import type { DocumentNumberGenerationStrategy } from '../../api/schemas';
 import { STRATEGY_HELP, STRATEGY_LABELS } from './documentNumberGeneration';
 
@@ -11,6 +12,11 @@ type Props = {
   docTimeZone: string;
   setDocTimeZone: (s: string) => void;
 };
+
+const STRATEGY_OPTIONS = (Object.keys(STRATEGY_LABELS) as DocumentNumberGenerationStrategy[]).map((k) => ({
+  value: k,
+  label: STRATEGY_LABELS[k],
+}));
 
 export function DocumentNumberGenerationSection({
   docStrategy,
@@ -27,82 +33,62 @@ export function DocumentNumberGenerationSection({
       style={{
         margin: 0,
         padding: '12px 14px',
-        border: '1px solid var(--border-subtle, #ddd)',
-        borderRadius: 8,
-        display: 'grid',
-        gap: 12,
+        border: '1px solid var(--mantine-color-default-border)',
+        borderRadius: 'var(--mantine-radius-md)',
       }}
     >
-      <legend style={{ padding: '0 6px', fontWeight: 600 }}>Document number generation</legend>
-      <p className="builder-muted" style={{ fontSize: '0.8rem', margin: 0 }}>
-        This field type stores values on the record as <code>businessDocumentNumber</code> (string). The strategy
-        below is saved in <code>config.documentNumberGeneration</code> for the API to apply on create.
-      </p>
-      <label className="field-label">
-        Strategy
-        <select
-          className="input"
+      <legend style={{ padding: '0 6px', fontWeight: 600, fontSize: '0.875rem' }}>Document number generation</legend>
+      <Stack gap="sm" mt="xs">
+        <Text size="xs" c="dimmed">
+          This field type stores values on the record as <code>businessDocumentNumber</code> (string). The strategy
+          below is saved in <code>config.documentNumberGeneration</code> for the API to apply on create.
+        </Text>
+        <Select
+          label="Strategy"
+          data={STRATEGY_OPTIONS}
           value={docStrategy}
-          onChange={(e) => setDocStrategy(e.target.value as DocumentNumberGenerationStrategy)}
-        >
-          {(Object.keys(STRATEGY_LABELS) as DocumentNumberGenerationStrategy[]).map((k) => (
-            <option key={k} value={k}>
-              {STRATEGY_LABELS[k]}
-            </option>
-          ))}
-        </select>
-      </label>
-      <p className="builder-muted" style={{ fontSize: '0.78rem', margin: 0 }}>
-        {STRATEGY_HELP[docStrategy]}
-      </p>
-      {(docStrategy === 'TIMESTAMP' ||
-        docStrategy === 'TENANT_SEQUENCE' ||
-        docStrategy === 'MONTHLY_SEQUENCE') && (
-        <label className="field-label">
-          Prefix (optional)
-          <input
-            className="input"
+          onChange={(v) => v && setDocStrategy(v as DocumentNumberGenerationStrategy)}
+          size="sm"
+        />
+        <Text size="xs" c="dimmed">
+          {STRATEGY_HELP[docStrategy]}
+        </Text>
+        {(docStrategy === 'TIMESTAMP' ||
+          docStrategy === 'TENANT_SEQUENCE' ||
+          docStrategy === 'MONTHLY_SEQUENCE') && (
+          <TextInput
+            label="Prefix (optional)"
+            description="Placed before the generated part (e.g. JV + 2026050001)."
             value={docPrefix}
             onChange={(e) => setDocPrefix(e.target.value)}
             placeholder="e.g. JV"
             maxLength={32}
+            size="sm"
           />
-          <span className="builder-muted" style={{ fontSize: '0.75rem', display: 'block', marginTop: 4 }}>
-            Placed before the generated part (e.g. <code>JV</code> + <code>2026050001</code>).
-          </span>
-        </label>
-      )}
-      {(docStrategy === 'TENANT_SEQUENCE' || docStrategy === 'MONTHLY_SEQUENCE') && (
-        <label className="field-label">
-          Sequence width
-          <input
-            className="input"
-            type="number"
+        )}
+        {(docStrategy === 'TENANT_SEQUENCE' || docStrategy === 'MONTHLY_SEQUENCE') && (
+          <NumberInput
+            label="Sequence width"
+            description="Zero-padded length of the numeric suffix (e.g. width 4 → 0001)."
             min={1}
             max={12}
             value={docSequenceWidth}
-            onChange={(e) => setDocSequenceWidth(Number(e.target.value) || 4)}
+            onChange={(v) => setDocSequenceWidth(typeof v === 'number' ? v : 4)}
+            size="sm"
           />
-          <span className="builder-muted" style={{ fontSize: '0.75rem', display: 'block', marginTop: 4 }}>
-            Zero-padded length of the numeric suffix (e.g. width 4 → 0001).
-          </span>
-        </label>
-      )}
-      {docStrategy === 'MONTHLY_SEQUENCE' && (
-        <label className="field-label">
-          Time zone
-          <input
-            className="input"
+        )}
+        {docStrategy === 'MONTHLY_SEQUENCE' && (
+          <TextInput
+            label="Time zone"
+            description="IANA id (e.g. America/New_York) used to decide which month a new number belongs to."
             value={docTimeZone}
             onChange={(e) => setDocTimeZone(e.target.value)}
             placeholder="UTC"
             maxLength={64}
+            size="sm"
           />
-          <span className="builder-muted" style={{ fontSize: '0.75rem', display: 'block', marginTop: 4 }}>
-            IANA id (e.g. <code>America/New_York</code>) used to decide which month a new number belongs to.
-          </span>
-        </label>
-      )}
+        )}
+      </Stack>
     </fieldset>
   );
 }

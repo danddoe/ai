@@ -1,5 +1,7 @@
 package com.erp.entitybuilder.security;
 
+import com.erp.entitybuilder.domain.DefinitionScope;
+import com.erp.entitybuilder.domain.EntityDefinition;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
@@ -22,13 +24,39 @@ public class EntityBuilderSecurity {
                         a.getAuthority().equals("entity_builder:tenants:admin"));
     }
 
-    /** Schema read endpoints: allow {@code entity_builder:schema:read} or {@code entity_builder:schema:write}. */
+    /**
+     * Full platform schema write (catalog sync, DDL import apply, mutating {@link DefinitionScope#STANDARD_OBJECT} entities).
+     */
+    public boolean canWriteFullSchema() {
+        return hasAuthority("entity_builder:schema:write");
+    }
+
+    /**
+     * Create/update tenant-owned schema (and layouts/relationships) — cannot mutate platform catalog entity definitions/fields.
+     */
+    public boolean canWriteTenantSchema() {
+        return canWriteFullSchema() || hasAuthority("entity_builder:schema:tenant_write");
+    }
+
+    public boolean canMutateEntitySchema(EntityDefinition entity) {
+        if (entity == null) return false;
+        if (entity.getDefinitionScope() == DefinitionScope.STANDARD_OBJECT) {
+            return canWriteFullSchema();
+        }
+        return canWriteTenantSchema();
+    }
+
+    /**
+     * Schema read endpoints: {@code entity_builder:schema:read}, full write, or tenant schema write.
+     */
     public boolean canReadSchema() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null) return false;
         return auth.getAuthorities().stream().anyMatch(a -> {
             String g = a.getAuthority();
-            return "entity_builder:schema:read".equals(g) || "entity_builder:schema:write".equals(g);
+            return "entity_builder:schema:read".equals(g)
+                    || "entity_builder:schema:write".equals(g)
+                    || "entity_builder:schema:tenant_write".equals(g);
         });
     }
 
@@ -43,6 +71,12 @@ public class EntityBuilderSecurity {
         return auth.getAuthorities().stream().anyMatch(a -> "portal:navigation:write".equals(a.getAuthority()));
     }
 
+    private boolean hasAuthority(String authority) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null) return false;
+        return auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals(authority));
+    }
+
     private TenantPrincipal principalOrNull() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null) return null;
@@ -50,4 +84,3 @@ public class EntityBuilderSecurity {
         return null;
     }
 }
-

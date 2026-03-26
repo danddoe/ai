@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.*;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -111,5 +112,49 @@ class FormLayoutsE2ETest extends AbstractEntityBuilderE2ETest {
                 Map.class
         );
         assertThat(getAfterResp.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void createFormLayout_withWipStatus_persists() {
+        Assumptions.assumeTrue(jdbcTemplate != null, "E2E skipped: no CockroachDB connection");
+
+        UUID userId = UUID.randomUUID();
+        UUID tenantId = UUID.randomUUID();
+        var headers = authHeaders(userId, tenantId, SCHEMA_PERMS);
+
+        Map<String, Object> createEntity = Map.of("name", "WIP Invoice", "slug", "invoice_wip_fl", "status", "ACTIVE");
+        ResponseEntity<Map> entityResp = restTemplate.exchange(
+                baseUrl + "/v1/entities",
+                HttpMethod.POST,
+                new HttpEntity<>(createEntity, headers),
+                Map.class
+        );
+        assertThat(entityResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        String entityId = String.valueOf(entityResp.getBody().get("id"));
+
+        Map<String, Object> region = new LinkedHashMap<>();
+        region.put("id", "reg-wip-test");
+        region.put("role", "tab");
+        region.put("title", "General");
+        region.put("tabGroupId", "main");
+        region.put("rows", List.of());
+        Map<String, Object> layout = new LinkedHashMap<>();
+        layout.put("version", 2);
+        layout.put("regions", List.of(region));
+
+        Map<String, Object> create = new LinkedHashMap<>();
+        create.put("name", "Draft form");
+        create.put("layout", layout);
+        create.put("isDefault", false);
+        create.put("status", "WIP");
+
+        ResponseEntity<Map> createResp = restTemplate.exchange(
+                baseUrl + "/v1/entities/" + entityId + "/form-layouts",
+                HttpMethod.POST,
+                new HttpEntity<>(create, headers),
+                Map.class
+        );
+        assertThat(createResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(createResp.getBody().get("status")).isEqualTo("WIP");
     }
 }

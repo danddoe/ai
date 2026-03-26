@@ -21,6 +21,10 @@ public class Tenant {
     @Column(nullable = false, length = 50)
     private String status = "ACTIVE";
 
+    /** Optional BCP 47 primary language for tenant defaults (e.g. {@code en}, {@code es}). */
+    @Column(name = "default_locale", length = 16)
+    private String defaultLocale;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -47,6 +51,8 @@ public class Tenant {
     public void setSlug(String slug) { this.slug = slug; }
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+    public String getDefaultLocale() { return defaultLocale; }
+    public void setDefaultLocale(String defaultLocale) { this.defaultLocale = defaultLocale; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
 }

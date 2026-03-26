@@ -9,13 +9,20 @@ public class TokenResponse {
     private String refreshToken;
     private long expiresInSeconds;
     private String tokenType = "Bearer";
+    /** Resolved from IAM user / tenant preference for portal language. */
+    private String preferredLocale;
 
     public TokenResponse() {}
 
     public TokenResponse(String accessToken, String refreshToken, long expiresInSeconds) {
+        this(accessToken, refreshToken, expiresInSeconds, null);
+    }
+
+    public TokenResponse(String accessToken, String refreshToken, long expiresInSeconds, String preferredLocale) {
         this.accessToken = accessToken;
         this.refreshToken = refreshToken;
         this.expiresInSeconds = expiresInSeconds;
+        this.preferredLocale = preferredLocale;
     }
 
     public String getAccessToken() {
@@ -48,5 +55,13 @@ public class TokenResponse {
 
     public void setTokenType(String tokenType) {
         this.tokenType = tokenType;
+    }
+
+    public String getPreferredLocale() {
+        return preferredLocale;
+    }
+
+    public void setPreferredLocale(String preferredLocale) {
+        this.preferredLocale = preferredLocale;
     }
 }

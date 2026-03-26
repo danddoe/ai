@@ -1,13 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import {
-  auditEventActorDisplay,
-  getEntity,
-  listEntityAuditEvents,
-  type AuditEventDto,
-  type EntityDto,
-} from '../api/schemas';
+import { Anchor, Button, Group, Stack, Text, Title } from '@mantine/core';
+import { getEntity, listEntityAuditEvents, type AuditEventDto, type EntityDto } from '../api/schemas';
 import { useAuth } from '../auth/AuthProvider';
+import { AuditEventsTable } from '../components/audit/AuditEventsTable';
 import { AuditPayloadModal } from '../components/AuditPayloadModal';
 
 export function EntityAuditPage() {
@@ -78,119 +74,93 @@ export function EntityAuditPage() {
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
+  const onViewPayload = useCallback((e: AuditEventDto) => setPayloadOpen(e), []);
+
   return (
-    <div className="page-shell page-shell-wide">
-      <nav className="breadcrumb">
-        <Link to="/entities">Entities</Link>
-        <span aria-hidden> / </span>
-        <Link to={`/entities/${entityId}/records`}>{entity?.name ?? '…'}</Link>
-        <span aria-hidden> / </span>
-        <span>Activity</span>
-      </nav>
-      <header className="page-header">
-        <div>
-          <h1 className="page-title">Entity activity</h1>
-          <p className="page-sub">
+    <Stack gap="lg" className="page-shell page-shell-wide" maw={1200}>
+      <Group gap="xs" wrap="wrap">
+        <Anchor component={Link} to="/entities" size="sm">
+          Entities
+        </Anchor>
+        <Text span c="dimmed" aria-hidden>
+          /
+        </Text>
+        <Anchor component={Link} to={`/entities/${entityId}/records`} size="sm">
+          {entity?.name ?? '…'}
+        </Anchor>
+        <Text span c="dimmed" aria-hidden>
+          /
+        </Text>
+        <Text span size="sm">
+          Activity
+        </Text>
+      </Group>
+
+      <Group justify="space-between" align="flex-start" wrap="wrap" gap="md">
+        <Stack gap={4}>
+          <Title order={1} size="h2">
+            Entity activity
+          </Title>
+          <Text c="dimmed" size="sm">
             {entity ? `${entity.name} — audit events for all records.` : 'Loading…'}
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <Link className="btn btn-secondary" to="/audit">
+          </Text>
+        </Stack>
+        <Group gap="xs">
+          <Button component={Link} to="/audit" variant="default" size="sm">
             All entities
-          </Link>
-          <Link className="btn btn-secondary" to={`/entities/${entityId}/records`}>
+          </Button>
+          <Button component={Link} to={`/entities/${entityId}/records`} variant="default" size="sm">
             Records
-          </Link>
-        </div>
-      </header>
+          </Button>
+        </Group>
+      </Group>
+
       {error && (
-        <p role="alert" className="text-error">
+        <Text role="alert" c="red" size="sm">
           {error}
-        </p>
+        </Text>
       )}
-      {loading && <p className="builder-muted">Loading…</p>}
+      {loading && (
+        <Text size="sm" c="dimmed">
+          Loading…
+        </Text>
+      )}
       {!loading && !error && (
         <>
-          <p className="builder-muted" style={{ marginBottom: 12 }}>
+          <Text size="sm" c="dimmed">
             {total === 0
               ? 'No audit events for this entity.'
               : `Page ${page} of ${totalPages} · ${total} event(s) total (newest first).`}
-          </p>
+          </Text>
           {items.length > 0 && (
-            <div className="records-table-wrap">
-              <table className="records-table">
-                <thead>
-                  <tr>
-                    <th>When</th>
-                    <th>Action</th>
-                    <th>Operation</th>
-                    <th>Record</th>
-                    <th>Actor</th>
-                    <th>Payload</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((e) => (
-                    <tr key={e.id}>
-                      <td>{new Date(e.createdAt).toLocaleString()}</td>
-                      <td>
-                        <code>{e.action}</code>
-                      </td>
-                      <td>{e.operation ?? '—'}</td>
-                      <td>
-                        {e.resourceId ? (
-                          <Link to={`/entities/${entityId}/records/${e.resourceId}`}>
-                            <code>{e.resourceId.slice(0, 8)}…</code>
-                          </Link>
-                        ) : (
-                          '—'
-                        )}
-                      </td>
-                      <td>
-                        {(() => {
-                          const display = auditEventActorDisplay(e);
-                          const idOnly = display === (e.actorId ?? '—');
-                          return idOnly ? (
-                            <code>{display}</code>
-                          ) : (
-                            <span title={e.actorId ? `User id: ${e.actorId}` : undefined}>{display}</span>
-                          );
-                        })()}
-                      </td>
-                      <td style={{ maxWidth: 140 }}>
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => setPayloadOpen(e)}
-                        >
-                          View payload
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <AuditEventsTable
+              items={items}
+              entityId={entityId}
+              includeRecordColumn
+              onViewPayload={onViewPayload}
+            />
           )}
           {totalPages > 1 && (
-            <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
-              <button
+            <Group gap="xs" mt="sm">
+              <Button
                 type="button"
-                className="btn btn-secondary btn-sm"
+                variant="default"
+                size="xs"
                 disabled={page <= 1}
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
               >
                 Previous
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
-                className="btn btn-secondary btn-sm"
+                variant="default"
+                size="xs"
                 disabled={page >= totalPages}
                 onClick={() => setPage((p) => p + 1)}
               >
                 Next
-              </button>
-            </div>
+              </Button>
+            </Group>
           )}
         </>
       )}
@@ -201,6 +171,6 @@ export function EntityAuditPage() {
           onClose={() => setPayloadOpen(null)}
         />
       )}
-    </div>
+    </Stack>
   );
 }

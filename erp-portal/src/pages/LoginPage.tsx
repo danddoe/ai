@@ -1,8 +1,27 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
+import {
+  Alert,
+  Box,
+  Button,
+  Center,
+  Container,
+  Divider,
+  Group,
+  Loader,
+  Paper,
+  PasswordInput,
+  Stack,
+  Text,
+  TextInput,
+  Title,
+} from '@mantine/core';
+import { useTranslation } from 'react-i18next';
+import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { useAuth } from '../auth/AuthProvider';
 
 export function LoginPage() {
+  const { t } = useTranslation();
   const { accessToken, login, sessionRestored, portalBootstrap, portalBootstrapLoaded } = useAuth();
   const location = useLocation();
   const from = (location.state as { from?: string } | null)?.from ?? '/home';
@@ -22,9 +41,21 @@ export function LoginPage() {
 
   if (!sessionRestored || !portalBootstrapLoaded) {
     return (
-      <div style={{ maxWidth: 360, margin: '4rem auto', padding: '0 1rem', textAlign: 'center' }}>
-        <p className="builder-muted">Checking session…</p>
-      </div>
+      <Box component="main" mih="100dvh" bg="var(--mantine-color-gray-0)">
+        <Stack gap={0} mih="100dvh">
+          <Group justify="flex-end" px="md" pt="md" wrap="nowrap">
+            <LanguageSwitcher size="sm" />
+          </Group>
+          <Center style={{ flex: 1 }} px="md">
+            <Stack align="center" gap="md">
+              <Loader size="md" type="dots" />
+              <Text c="dimmed" size="sm">
+                {t('login.checkingSession')}
+              </Text>
+            </Stack>
+          </Center>
+        </Stack>
+      </Box>
     );
   }
 
@@ -39,70 +70,72 @@ export function LoginPage() {
     try {
       await login(tenantSlugOrId.trim(), email.trim(), password);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed');
+      setError(err instanceof Error ? err.message : t('login.loginFailed'));
     } finally {
       setPending(false);
     }
   }
 
   return (
-    <div style={{ maxWidth: 360, margin: '4rem auto', padding: '0 1rem' }}>
-      <h1 style={{ fontSize: '1.25rem' }}>Sign in</h1>
-      <p style={{ color: '#52525b', fontSize: '0.875rem' }}>
-        API gateway + IAM. Refresh token is stored in an httpOnly cookie when IAM cookie mode is on.
-      </p>
-      <form onSubmit={(e) => void onSubmit(e)} style={{ display: 'grid', gap: '0.75rem', marginTop: '1.5rem' }}>
-        <label style={{ display: 'grid', gap: '0.25rem', fontSize: '0.875rem' }}>
-          Tenant slug or ID
-          <input
-            value={tenantSlugOrId}
-            onChange={(e) => setTenantSlugOrId(e.target.value)}
-            required
-            autoComplete="organization"
-            style={{ padding: '0.5rem 0.6rem', borderRadius: 6, border: '1px solid #d4d4d8' }}
-          />
-        </label>
-        <label style={{ display: 'grid', gap: '0.25rem', fontSize: '0.875rem' }}>
-          Email
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            autoComplete="username"
-            style={{ padding: '0.5rem 0.6rem', borderRadius: 6, border: '1px solid #d4d4d8' }}
-          />
-        </label>
-        <label style={{ display: 'grid', gap: '0.25rem', fontSize: '0.875rem' }}>
-          Password
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            autoComplete="current-password"
-            style={{ padding: '0.5rem 0.6rem', borderRadius: 6, border: '1px solid #d4d4d8' }}
-          />
-        </label>
-        {error && (
-          <p role="alert" style={{ color: '#b91c1c', fontSize: '0.875rem', margin: 0 }}>
-            {error}
-          </p>
-        )}
-        <button
-          type="submit"
-          disabled={pending}
-          style={{
-            padding: '0.6rem',
-            borderRadius: 6,
-            border: 'none',
-            background: '#18181b',
-            color: '#fff',
-          }}
-        >
-          {pending ? 'Signing in…' : 'Sign in'}
-        </button>
-      </form>
-    </div>
+    <Box component="main" mih="100dvh" bg="var(--mantine-color-gray-0)">
+      <Stack gap={0} mih="100dvh">
+        <Group justify="flex-end" px="md" pt="md" wrap="nowrap">
+          <LanguageSwitcher size="sm" />
+        </Group>
+        <Center style={{ flex: 1 }} px="md" py="xl">
+          <Container size={420} p={0}>
+            <Paper shadow="sm" p="xl" radius="md" withBorder>
+              <Title order={1} size="h3" fw={700} mb={4}>
+                {t('appTitle')}
+              </Title>
+              <Text c="dimmed" size="sm" mb="xs">
+                {t('login.signInTitle')}
+              </Text>
+              <Text c="dimmed" size="xs" mb="lg" lh={1.5}>
+                {t('login.blurb')}
+              </Text>
+              <Divider mb="lg" />
+              <form onSubmit={(e) => void onSubmit(e)}>
+                <Stack gap="md">
+                  <TextInput
+                    label={t('login.tenantLabel')}
+                    value={tenantSlugOrId}
+                    onChange={(e) => setTenantSlugOrId(e.target.value)}
+                    required
+                    autoComplete="organization"
+                    size="sm"
+                  />
+                  <TextInput
+                    label={t('login.email')}
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    autoComplete="username"
+                    size="sm"
+                  />
+                  <PasswordInput
+                    label={t('login.password')}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    autoComplete="current-password"
+                    size="sm"
+                  />
+                  {error && (
+                    <Alert color="red" variant="light" title={t('login.signInFailed')} role="alert">
+                      {error}
+                    </Alert>
+                  )}
+                  <Button type="submit" loading={pending} fullWidth mt="xs">
+                    {pending ? t('login.signingIn') : t('login.signIn')}
+                  </Button>
+                </Stack>
+              </form>
+            </Paper>
+          </Container>
+        </Center>
+      </Stack>
+    </Box>
   );
 }

@@ -1,7 +1,48 @@
+import { applyPreferredLocaleFromServer, getApiLocale } from '../i18n/apiLocale';
+
+const AUTH_REFRESH_LOCK_NAME = 'erp_portal_auth_refresh';
+const AUTH_BROADCAST_NAME = 'erp_portal_auth';
+
 let accessTokenMemory: string | null = null;
 let onTokenRefreshed: ((token: string) => void) | null = null;
 /** Called when refresh fails after a 401/403 so the app can clear JWT state and show login. */
 let onSessionInvalidated: (() => void) | null = null;
+
+/** Set when any tab refreshes (this tab or via BroadcastChannel). Used to skip duplicate POST /auth/refresh. */
+let lastAuthRefreshBroadcastAt = 0;
+
+let refreshInFlight: Promise<RefreshAccessTokenResult> | null = null;
+
+const authBroadcast: BroadcastChannel | null =
+  typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel(AUTH_BROADCAST_NAME) : null;
+
+if (authBroadcast) {
+  authBroadcast.addEventListener('message', (ev: MessageEvent) => {
+    const d = ev.data as
+      | { type?: string; accessToken?: string; preferredLocale?: string | null; ts?: number }
+      | undefined;
+    if (d?.type !== 'auth_access_token' || typeof d.accessToken !== 'string' || !d.accessToken) {
+      return;
+    }
+    const ts = typeof d.ts === 'number' ? d.ts : Date.now();
+    lastAuthRefreshBroadcastAt = ts;
+    applyPreferredLocaleFromServer(d.preferredLocale);
+    accessTokenMemory = d.accessToken;
+    onTokenRefreshed?.(d.accessToken);
+  });
+}
+
+class RefreshAuthFailure extends Error {
+  constructor() {
+    super('refresh_auth_failed');
+    this.name = 'RefreshAuthFailure';
+  }
+}
+
+export type RefreshAccessTokenResult =
+  | { kind: 'ok'; accessToken: string }
+  | { kind: 'auth_failed' }
+  | { kind: 'network_error' };
 
 export function setOnAccessTokenRefreshed(cb: ((token: string) => void) | null) {
   onTokenRefreshed = cb;
@@ -24,13 +65,112 @@ export function apiBaseUrl() {
   return base.replace(/\/$/, '');
 }
 
+/** Sent on gateway/API calls so services can resolve localized metadata. */
+export function localeRequestHeaders(): Record<string, string> {
+  const lang = getApiLocale();
+  return {
+    'Accept-Language': lang,
+    'X-User-Locale': lang,
+  };
+}
+
+/**
+ * Single-flight, cross-tab coordinated POST /auth/refresh (Web Locks + BroadcastChannel).
+ * Use for session restore and after 401 — avoids refresh-token rotation races between tabs.
+ */
+export async function refreshAccessToken(): Promise<RefreshAccessTokenResult> {
+  if (!refreshInFlight) {
+    refreshInFlight = runCoordinatedRefresh().finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
+}
+
+async function runCoordinatedRefresh(): Promise<RefreshAccessTokenResult> {
+  const waitStartedAt = typeof performance !== 'undefined' ? performance.now() : 0;
+  try {
+    if (typeof navigator !== 'undefined' && navigator.locks?.request) {
+      const token = await navigator.locks.request(
+        AUTH_REFRESH_LOCK_NAME,
+        { mode: 'exclusive' },
+        async () => {
+          if (lastAuthRefreshBroadcastAt > waitStartedAt && accessTokenMemory) {
+            return accessTokenMemory;
+          }
+          return await fetchRefreshAndApply();
+        }
+      );
+      return { kind: 'ok', accessToken: token };
+    }
+    const token = await fetchRefreshAndApply();
+    return { kind: 'ok', accessToken: token };
+  } catch (e) {
+    if (e instanceof RefreshAuthFailure) {
+      return { kind: 'auth_failed' };
+    }
+    return { kind: 'network_error' };
+  }
+}
+
+async function fetchRefreshAndApply(): Promise<string> {
+  let res: Response;
+  try {
+    res = await fetch(`${apiBaseUrl()}/auth/refresh`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', ...localeRequestHeaders() },
+      body: '{}',
+    });
+  } catch {
+    throw new Error('network');
+  }
+  if (res.status === 401 || res.status === 403) {
+    throw new RefreshAuthFailure();
+  }
+  if (!res.ok) {
+    throw new Error('network');
+  }
+  const data = (await res.json()) as { accessToken: string; preferredLocale?: string | null };
+  if (!data.accessToken) {
+    throw new RefreshAuthFailure();
+  }
+  applyPreferredLocaleFromServer(data.preferredLocale);
+  accessTokenMemory = data.accessToken;
+  onTokenRefreshed?.(data.accessToken);
+  const ts = Date.now();
+  lastAuthRefreshBroadcastAt = ts;
+  authBroadcast?.postMessage({
+    type: 'auth_access_token',
+    accessToken: data.accessToken,
+    preferredLocale: data.preferredLocale,
+    ts,
+  });
+  return data.accessToken;
+}
+
+/** Notify other tabs after login (same-origin BroadcastChannel). */
+export function publishAccessTokenToOtherTabs(accessToken: string, preferredLocale?: string | null) {
+  const ts = Date.now();
+  lastAuthRefreshBroadcastAt = ts;
+  authBroadcast?.postMessage({
+    type: 'auth_access_token',
+    accessToken,
+    preferredLocale,
+    ts,
+  });
+}
+
 /**
  * Authenticated fetch via API gateway. Sends httpOnly refresh cookie.
- * Retries once after POST /auth/refresh (cookie only, no body token).
+ * Retries once after coordinated POST /auth/refresh.
  */
 export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const url = path.startsWith('http') ? path : `${apiBaseUrl()}${path.startsWith('/') ? path : `/${path}`}`;
   const headers = new Headers(init.headers);
+  const loc = localeRequestHeaders();
+  headers.set('Accept-Language', loc['Accept-Language']);
+  headers.set('X-User-Locale', loc['X-User-Locale']);
   if (accessTokenMemory) {
     headers.set('Authorization', `Bearer ${accessTokenMemory}`);
   }
@@ -46,24 +186,11 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
 
   const skipRefresh = path.includes('/auth/refresh') || path.includes('/auth/login');
   if (!skipRefresh && (res.status === 401 || res.status === 403)) {
-    let refreshRes: Response;
-    try {
-      refreshRes = await fetch(`${apiBaseUrl()}/auth/refresh`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: '{}',
-      });
-    } catch {
-      return res;
-    }
-    if (refreshRes.ok) {
-      const data = (await refreshRes.json()) as { accessToken: string };
-      accessTokenMemory = data.accessToken;
-      onTokenRefreshed?.(data.accessToken);
-      headers.set('Authorization', `Bearer ${accessTokenMemory}`);
+    const refreshed = await refreshAccessToken();
+    if (refreshed.kind === 'ok') {
+      headers.set('Authorization', `Bearer ${refreshed.accessToken}`);
       res = await fetch(url, { ...init, headers, credentials: 'include' });
-    } else if (refreshRes.status === 401 || refreshRes.status === 403) {
+    } else if (refreshed.kind === 'auth_failed') {
       accessTokenMemory = null;
       onSessionInvalidated?.();
     }

@@ -1,25 +1,31 @@
+import { Button } from '@mantine/core';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams, useLocation } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
-  auditEventActorDisplay,
   createRecord,
   getEntity,
   getRecord,
   isDocumentNumberFieldType,
   listFields,
+  listEntities,
   listFormLayouts,
   listRecordAuditEvents,
   patchRecord,
   type AuditEventDto,
+  type EntityDto,
   type EntityFieldDto,
   type FormLayoutDto,
+  type RecordDto,
 } from '../api/schemas';
 import { useAuth } from '../auth/AuthProvider';
+import { AuditEventsTable } from '../components/audit/AuditEventsTable';
 import { AuditPayloadModal } from '../components/AuditPayloadModal';
+import { RecordFormRuntimeProvider } from '../components/runtime/RecordFormRuntimeContext';
 import {
   buildInlineFieldErrorsForRegions,
   LayoutV2RuntimeRenderer,
 } from '../components/runtime/LayoutV2RuntimeRenderer';
+import { buildEntityBySlugForReferenceFields } from '../utils/referenceFieldConfig';
 import {
   assertCoreDomainRoutedOrThrow,
   createCoreMasterRow,
@@ -58,6 +64,10 @@ function findFirstWizardStepWithFieldError(
 }
 
 /** Locale date + local wall time with milliseconds (avoids Intl combos that throw in some runtimes). */
+function shortUuid(id: string): string {
+  return id.length > 10 ? `${id.slice(0, 8)}…` : id;
+}
+
 function formatSavedTimestamp(date: Date): string {
   const datePart = date.toLocaleDateString(undefined, {
     year: 'numeric',
@@ -71,12 +81,9 @@ function formatSavedTimestamp(date: Date): string {
   return `${datePart}, ${hh}:${mm}:${ss}.${mss}`;
 }
 
-type RecordSaveFlash = { recordSaveFlash?: { at: string } };
-
 export function RecordFormPage() {
   const { entityId = '', recordId = '' } = useParams();
   const navigate = useNavigate();
-  const location = useLocation();
   const { tenantId, canRecordsRead, canRecordsWrite, canPiiRead } = useAuth();
   const isCreate = recordId === 'new';
 
@@ -98,6 +105,13 @@ export function RecordFormPage() {
   const [auditPayloadOpen, setAuditPayloadOpen] = useState<AuditEventDto | null>(null);
   const [entitySlug, setEntitySlug] = useState<string>('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [recordDetail, setRecordDetail] = useState<RecordDto | null>(null);
+  const [allEntities, setAllEntities] = useState<EntityDto[]>([]);
+
+  const entityBySlug = useMemo(
+    () => buildEntityBySlugForReferenceFields(fields, allEntities),
+    [fields, allEntities]
+  );
 
   const wizardIds = layout?.runtime?.recordEntry?.wizard?.stepOrderRegionIds ?? [];
   const isWizard =
@@ -110,6 +124,8 @@ export function RecordFormPage() {
     return layout.regions;
   }, [layout, isWizard, wizardStep]);
 
+  const onAuditViewPayload = useCallback((e: AuditEventDto) => setAuditPayloadOpen(e), []);
+
   const load = useCallback(async () => {
     if (!tenantId || !entityId || !recordId) return;
     if (!canRecordsRead) {
@@ -119,11 +135,13 @@ export function RecordFormPage() {
     setError(null);
     setLoading(true);
     try {
-      const [ent, flds, layouts] = await Promise.all([
+      const [ent, flds, layouts, ents] = await Promise.all([
         getEntity(entityId),
         listFields(entityId),
         listFormLayouts(entityId),
+        listEntities(),
       ]);
+      setAllEntities(ents);
       setEntityName(ent.name);
       setEntitySlug(ent.slug || '');
       setFields(flds);
@@ -145,6 +163,7 @@ export function RecordFormPage() {
       }
 
       if (isCreate) {
+        setRecordDetail(null);
         setValues({});
         setWizardStep(0);
         setFieldErrors({});
@@ -152,6 +171,7 @@ export function RecordFormPage() {
       }
 
       const rec = await getRecord(tenantId, entityId, recordId);
+      setRecordDetail(rec);
       let merged = { ...rec.values };
       if (isCoreServiceHybridEntitySlug(ent.slug) && rec.externalId) {
         try {
@@ -173,6 +193,8 @@ export function RecordFormPage() {
       setLayout(null);
       setValues({});
       setFieldErrors({});
+      setRecordDetail(null);
+      setAllEntities([]);
     } finally {
       setLoading(false);
     }
@@ -258,7 +280,15 @@ export function RecordFormPage() {
     return Object.keys(errs).length === 0;
   }
 
-  async function save() {
+  function resetFormForAnotherRecord() {
+    setValues({});
+    setWizardStep(0);
+    setFieldErrors({});
+    setRecordDetail(null);
+    setActiveTab('form');
+  }
+
+  async function save(opts?: { addAnother?: boolean }) {
     if (!tenantId || !layout || !canRecordsWrite) return;
     const errs = buildInlineFieldErrorsForRegions(layout.regions, fields, values);
     setFieldErrors(errs);
@@ -279,6 +309,7 @@ export function RecordFormPage() {
       const hybrid = isCoreServiceHybridEntitySlug(entitySlug);
 
       if (isCreate) {
+        const addAnother = opts?.addAnother === true;
         if (hybrid) {
           const coreId = await createCoreMasterRow(tenantId, entitySlug, fields, values);
           const created = await createRecord(tenantId, entityId, {
@@ -286,21 +317,35 @@ export function RecordFormPage() {
             externalId: coreId,
             ...(bdn !== undefined ? { businessDocumentNumber: bdn } : {}),
           });
-          const savedAt = new Date().toISOString();
-          navigate(`/entities/${entityId}/records/${created.id}`, {
-            replace: true,
-            state: { recordSaveFlash: { at: savedAt } },
-          });
+          if (addAnother) {
+            resetFormForAnotherRecord();
+            setSaveSuccess(
+              `Record saved (${shortUuid(created.id)}). You can add another below.`
+            );
+          } else {
+            const savedAt = new Date().toISOString();
+            navigate(`/entities/${entityId}/records/${created.id}`, {
+              replace: true,
+              state: { recordSaveFlash: { at: savedAt } },
+            });
+          }
         } else {
           const created = await createRecord(tenantId, entityId, {
             values: payload,
             ...(bdn !== undefined ? { businessDocumentNumber: bdn } : {}),
           });
-          const savedAt = new Date().toISOString();
-          navigate(`/entities/${entityId}/records/${created.id}`, {
-            replace: true,
-            state: { recordSaveFlash: { at: savedAt } },
-          });
+          if (addAnother) {
+            resetFormForAnotherRecord();
+            setSaveSuccess(
+              `Record saved (${shortUuid(created.id)}). You can add another below.`
+            );
+          } else {
+            const savedAt = new Date().toISOString();
+            navigate(`/entities/${entityId}/records/${created.id}`, {
+              replace: true,
+              state: { recordSaveFlash: { at: savedAt } },
+            });
+          }
         }
       } else if (hybrid) {
         const rec = await getRecord(tenantId, entityId, recordId);
@@ -367,13 +412,18 @@ export function RecordFormPage() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          <Link className="btn btn-secondary" to={`/entities/${entityId}/records`}>
+          <Button component={Link} variant="default" to={`/entities/${entityId}/records`}>
             Back to list
-          </Link>
+          </Button>
+          {!isCreate && (
+            <Button component={Link} variant="default" to={`/entities/${entityId}/records/new`}>
+              Add record
+            </Button>
+          )}
           {isWizard && wizardStep > 0 && (
-            <button
+            <Button
               type="button"
-              className="btn btn-secondary"
+              variant="default"
               disabled={saving}
               onClick={() => {
                 setFieldErrors({});
@@ -381,12 +431,11 @@ export function RecordFormPage() {
               }}
             >
               Back
-            </button>
+            </Button>
           )}
           {isWizard && !wizardLast && (
-            <button
+            <Button
               type="button"
-              className="btn btn-primary"
               disabled={saving}
               onClick={() => {
                 if (!validateCurrentStep()) return;
@@ -394,15 +443,59 @@ export function RecordFormPage() {
               }}
             >
               Next
-            </button>
+            </Button>
           )}
           {canRecordsWrite && (!isWizard || wizardLast) && (
-            <button type="button" className="btn btn-primary" disabled={saving || !layout} onClick={() => void save()}>
-              {saving ? 'Saving…' : 'Save'}
-            </button>
+            <>
+              <Button type="button" disabled={saving || !layout} onClick={() => void save()}>
+                {saving ? 'Saving…' : 'Save'}
+              </Button>
+              {isCreate && (
+                <Button
+                  type="button"
+                  variant="light"
+                  disabled={saving || !layout}
+                  onClick={() => void save({ addAnother: true })}
+                >
+                  {saving ? 'Saving…' : 'Save and add another'}
+                </Button>
+              )}
+            </>
           )}
         </div>
       </header>
+      {!isCreate && recordDetail && (
+        <div
+          className="builder-muted"
+          style={{ fontSize: '0.8125rem', marginBottom: 14, lineHeight: 1.55 }}
+        >
+          <span>Created {new Date(recordDetail.createdAt).toLocaleString()}</span>
+          <span aria-hidden> · </span>
+          <span>
+            Created by{' '}
+            {recordDetail.createdByLabel?.trim() ? (
+              <span title={recordDetail.createdBy ?? undefined}>{recordDetail.createdByLabel.trim()}</span>
+            ) : recordDetail.createdBy ? (
+              <code title={recordDetail.createdBy}>{shortUuid(recordDetail.createdBy)}</code>
+            ) : (
+              '—'
+            )}
+          </span>
+          <span aria-hidden> · </span>
+          <span>Last updated {new Date(recordDetail.updatedAt).toLocaleString()}</span>
+          <span aria-hidden> · </span>
+          <span>
+            Last edited by{' '}
+            {recordDetail.updatedByLabel?.trim() ? (
+              <span title={recordDetail.updatedBy ?? undefined}>{recordDetail.updatedByLabel.trim()}</span>
+            ) : recordDetail.updatedBy ? (
+              <code title={recordDetail.updatedBy}>{shortUuid(recordDetail.updatedBy)}</code>
+            ) : (
+              '—'
+            )}
+          </span>
+        </div>
+      )}
       {error && (
         <p role="alert" className="text-error">
           {error}
@@ -419,24 +512,24 @@ export function RecordFormPage() {
           aria-label="Record view"
           style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}
         >
-          <button
+          <Button
             type="button"
             role="tab"
+            variant={activeTab === 'form' ? 'filled' : 'default'}
             aria-selected={activeTab === 'form'}
-            className={activeTab === 'form' ? 'btn btn-primary' : 'btn btn-secondary'}
             onClick={() => setActiveTab('form')}
           >
             Form
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             role="tab"
+            variant={activeTab === 'history' ? 'filled' : 'default'}
             aria-selected={activeTab === 'history'}
-            className={activeTab === 'history' ? 'btn btn-primary' : 'btn btn-secondary'}
             onClick={() => setActiveTab('history')}
           >
             History
-          </button>
+          </Button>
         </div>
       )}
       {loading && <p className="builder-muted">Loading…</p>}
@@ -463,73 +556,32 @@ export function RecordFormPage() {
                   : `Showing ${auditEvents.length} of ${auditTotal} event(s) (newest first).`}
               </p>
               {auditEvents.length > 0 && (
-                <div className="records-table-wrap">
-                  <table className="records-table">
-                    <thead>
-                      <tr>
-                        <th>When</th>
-                        <th>Action</th>
-                        <th>Operation</th>
-                        <th>Actor</th>
-                        <th>Payload</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {auditEvents.map((e) => (
-                        <tr key={e.id}>
-                          <td>{new Date(e.createdAt).toLocaleString()}</td>
-                          <td>
-                            <code>{e.action}</code>
-                          </td>
-                          <td>{e.operation ?? '—'}</td>
-                          <td>
-                            {(() => {
-                              const display = auditEventActorDisplay(e);
-                              const idOnly = display === (e.actorId ?? '—');
-                              return idOnly ? (
-                                <code>{display}</code>
-                              ) : (
-                                <span title={e.actorId ? `User id: ${e.actorId}` : undefined}>{display}</span>
-                              );
-                            })()}
-                          </td>
-                          <td style={{ maxWidth: 140 }}>
-                            <button
-                              type="button"
-                              className="btn btn-secondary btn-sm"
-                              onClick={() => setAuditPayloadOpen(e)}
-                            >
-                              View payload
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <AuditEventsTable items={auditEvents} onViewPayload={onAuditViewPayload} />
               )}
             </>
           )}
         </section>
       )}
       {!loading && layout && activeTab === 'form' && (
-        <LayoutV2RuntimeRenderer
-          regions={regionsToRender}
-          fields={fields}
-          values={values}
-          onChange={onFieldChange}
-          disabled={!canRecordsWrite}
-          canPiiRead={canPiiRead}
-          useTabGroups={!isWizard}
-          fieldErrors={fieldErrors}
-          onLayoutAction={(a) => {
-            if (a === 'save') {
-              if (canRecordsWrite) void save();
-              return;
-            }
-            navigate(`/entities/${entityId}/records`);
-          }}
-        />
+        <RecordFormRuntimeProvider tenantId={tenantId ?? null} hostEntityId={entityId} entityBySlug={entityBySlug}>
+          <LayoutV2RuntimeRenderer
+            regions={regionsToRender}
+            fields={fields}
+            values={values}
+            onChange={onFieldChange}
+            disabled={!canRecordsWrite}
+            canPiiRead={canPiiRead}
+            useTabGroups={!isWizard}
+            fieldErrors={fieldErrors}
+            onLayoutAction={(a) => {
+              if (a === 'save') {
+                if (canRecordsWrite) void save();
+                return;
+              }
+              navigate(`/entities/${entityId}/records`);
+            }}
+          />
+        </RecordFormRuntimeProvider>
       )}
       {auditPayloadOpen && (
         <AuditPayloadModal

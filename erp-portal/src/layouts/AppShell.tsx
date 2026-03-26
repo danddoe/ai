@@ -1,7 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
+import { Anchor, AppShell, Badge, Box, Burger, Button, Group } from '@mantine/core';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../auth/AuthProvider';
 import { GlobalSearch } from '../components/GlobalSearch';
+import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { NavSidebar } from '../components/NavSidebar';
 import { usePortalNavigation } from '../hooks/usePortalNavigation';
 
@@ -14,7 +17,8 @@ function layoutBuilderMode(pathname: string): 'form' | 'list' | null {
   return null;
 }
 
-export function AppShell() {
+export function AppLayout() {
+  const { t } = useTranslation();
   const location = useLocation();
   const { logout } = useAuth();
   const { items, state: navState } = usePortalNavigation();
@@ -38,63 +42,71 @@ export function AppShell() {
 
   const sidebarVisible = builderMode === null;
 
-  const shellClass = useMemo(() => `app-shell${builderMode ? ' app-shell--builder' : ''}`, [builderMode]);
-
   return (
-    <div className={shellClass}>
-      <header className="app-header">
-        <div className="app-header-left">
-          {!builderMode && (
-            <button
-              type="button"
-              className="app-header-icon-btn"
-              onClick={() => setCollapsed((c) => !c)}
-              aria-expanded={!collapsed}
-              aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            >
-              ☰
-            </button>
-          )}
-          <Link to="/home" className="app-logo">
-            ERP
-          </Link>
-          {builderMode === 'form' && (
-            <span className="app-header-mode-badge" title="Form builder — module nav hidden">
-              Form builder
-            </span>
-          )}
-          {builderMode === 'list' && (
-            <span className="app-header-mode-badge" title="List view designer — module nav hidden">
-              List designer
-            </span>
-          )}
-        </div>
-        <div className="app-header-center">
-          <GlobalSearch />
-        </div>
-        <div className="app-header-right">
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => void logout()}>
-            Log out
-          </button>
-        </div>
-      </header>
-      <div className="app-body">
-        {sidebarVisible && (
+    <AppShell
+      header={{ height: 56 }}
+      padding="md"
+      {...(sidebarVisible
+        ? { navbar: { width: collapsed ? 56 : 280, breakpoint: 0 } }
+        : {})}
+    >
+      <AppShell.Header>
+        <Group h="100%" px="sm" justify="space-between" gap="md" wrap="nowrap">
+          <Group gap="sm" wrap="nowrap">
+            {sidebarVisible && (
+              <Burger
+                opened={!collapsed}
+                onClick={() => setCollapsed((c) => !c)}
+                size="sm"
+                aria-label={collapsed ? t('header.expandSidebar') : t('header.collapseSidebar')}
+              />
+            )}
+            <Anchor component={Link} to="/home" fw={700} c="var(--mantine-color-text)" underline="never">
+              {t('appTitle')}
+            </Anchor>
+            {builderMode === 'form' && (
+              <Badge size="sm" variant="light" title={t('header.formBuilderTitle')}>
+                {t('header.formBuilderBadge')}
+              </Badge>
+            )}
+            {builderMode === 'list' && (
+              <Badge size="sm" variant="light" title={t('header.listDesignerTitle')}>
+                {t('header.listDesignerBadge')}
+              </Badge>
+            )}
+          </Group>
+          <Box style={{ flex: 1, minWidth: 0, display: 'flex', justifyContent: 'center' }}>
+            <Box maw={560} w="100%">
+              <GlobalSearch />
+            </Box>
+          </Box>
+          <Group gap="xs" wrap="nowrap">
+            <LanguageSwitcher size="xs" />
+            <Button variant="subtle" size="sm" onClick={() => void logout()}>
+              {t('header.logOut')}
+            </Button>
+          </Group>
+        </Group>
+      </AppShell.Header>
+
+      {sidebarVisible && (
+        <AppShell.Navbar p={0} withBorder>
           <NavSidebar
             items={items}
             collapsed={collapsed}
             onExpand={() => setCollapsed(false)}
           />
+        </AppShell.Navbar>
+      )}
+
+      <AppShell.Main>
+        {navState.status === 'error' && builderMode === null && (
+          <Box component="p" className="app-nav-warn" role="status" mb="sm">
+            {t('nav.loadError', { message: navState.message })}
+          </Box>
         )}
-        <main className={`app-main${builderMode ? ' app-main--builder' : ''}`}>
-          {navState.status === 'error' && builderMode === null && (
-            <p className="app-nav-warn" role="status">
-              Could not load navigation: {navState.message}
-            </p>
-          )}
-          <Outlet />
-        </main>
-      </div>
-    </div>
+        <Outlet />
+      </AppShell.Main>
+    </AppShell>
   );
 }

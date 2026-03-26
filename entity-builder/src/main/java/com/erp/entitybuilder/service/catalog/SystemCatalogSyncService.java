@@ -1,5 +1,6 @@
 package com.erp.entitybuilder.service.catalog;
 
+import com.erp.entitybuilder.domain.DefinitionScope;
 import com.erp.entitybuilder.domain.EntityDefinition;
 import com.erp.entitybuilder.domain.EntityField;
 import com.erp.entitybuilder.repository.EntityDefinitionRepository;
@@ -79,7 +80,7 @@ public class SystemCatalogSyncService {
 
         EntityDefinition entity = entityRepository.findByTenantIdAndSlug(tenantId, slug).orElse(null);
         if (entity == null) {
-            entity = schemaService.createEntity(tenantId, name, slug, description, "ACTIVE", categoryKey);
+            entity = schemaService.createEntity(tenantId, name, slug, description, "ACTIVE", categoryKey, false, DefinitionScope.STANDARD_OBJECT);
         } else {
             schemaService.updateEntity(
                     tenantId,
@@ -91,10 +92,12 @@ public class SystemCatalogSyncService {
                     false,
                     Optional.empty(),
                     false,
-                    Optional.ofNullable(categoryKey)
+                    Optional.ofNullable(categoryKey),
+                    Optional.empty()
             );
         }
         entity = schemaService.getEntity(tenantId, entity.getId());
+        schemaService.markEntityAsStandardCatalog(tenantId, entity.getId());
 
         JsonNode fieldsNode = root.get("fields");
         if (fieldsNode == null || !fieldsNode.isArray()) {
@@ -115,6 +118,7 @@ public class SystemCatalogSyncService {
                     false,
                     Optional.of(defaultDisplay.trim()),
                     false,
+                    Optional.empty(),
                     Optional.empty()
             );
         }

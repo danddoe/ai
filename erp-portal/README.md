@@ -49,9 +49,11 @@ Open `http://localhost:5173`. Sign in with tenant slug, email, password, then us
 
 **Shell:** All authenticated routes use [`AppShell`](src/layouts/AppShell.tsx): sticky header (logo, **global search** Ctrl+K / ⌘K, log out), collapsible **IAM-driven sidebar** (`GET /v1/navigation`), and main content. On form-builder URLs the **module sidebar is hidden** and a “Form builder” badge appears; the builder keeps its own three-panel tool UI.
 
-If IAM was started with profile `default-bootstrap` on an empty DB, use tenant **`ai`** and **`superadmin@ai.com`**; the password is whatever you configured via **`SEED_SUPERADMIN_PASSWORD`** / Vault (no default in this repo).
+If IAM was started with profile `default-bootstrap` on an empty DB, use tenant **`ai`**. Log in as **`superadmin@ai.com`** or the system builder **`superai@unknownerp.com`**; passwords come from **`SEED_SUPERADMIN_PASSWORD`** (and optionally **`SEED_SUPERAI_PASSWORD`** for the builder) / Vault (no default in this repo).
 
 `VITE_API_BASE_URL` defaults to `http://localhost:8000` in `.env.development`.
+
+**Dev sample tenant:** With `npm run dev`, the home page can show **Create sample tenant + admin** if your user has IAM platform access (`iam:tenants:admin`, `iam:security:admin`, or `iam:superadmin`). It creates tenant slug **`super-ai-tenant`**, user **`superaitenantadmin@superaitenant.com`**, and a role with **`entity_builder:schema:tenant_write`** (extend/create own schema, not platform catalog definitions). IAM must have applied Flyway **`V22`** for that permission.
 
 ### `401 Unauthorized` on API calls
 

@@ -1,6 +1,8 @@
 import { apiFetch } from './client';
 import type { LayoutV2 } from '../types/formLayout';
 
+export type DefinitionScope = 'STANDARD_OBJECT' | 'TENANT_OBJECT';
+
 export type EntityDto = {
   id: string;
   tenantId: string;
@@ -10,6 +12,8 @@ export type EntityDto = {
   baseEntityId?: string | null;
   defaultDisplayFieldSlug?: string | null;
   status: string;
+  categoryKey?: string | null;
+  definitionScope?: DefinitionScope;
   createdAt: string;
   updatedAt: string;
 };
@@ -41,6 +45,7 @@ export function isDocumentNumberFieldType(fieldType: string | null | undefined):
 export type EntityFieldDto = {
   id: string;
   entityId: string;
+  definitionScope?: DefinitionScope;
   name: string;
   slug: string;
   fieldType: string;
@@ -48,10 +53,18 @@ export type EntityFieldDto = {
   pii: boolean;
   sortOrder: number;
   labelOverride?: string | null;
+  /** Server-resolved label for current Accept-Language / X-User-Locale. */
+  displayLabel?: string | null;
+  /** Persisted translations (locale → label). */
+  labels?: Record<string, string> | null;
   formatString?: string | null;
   status: string;
   createdAt: string;
   updatedAt: string;
+  /**
+   * JSON bag. Reference fields: {@code targetEntitySlug}; optional {@code referenceLookupDisplaySlugs} (string[], max 12)
+   * for extra columns; optional {@code referenceUiMode} {@code "search"} (default) or {@code "dropdown"}.
+   */
   config?: Record<string, unknown> | null;
 };
 
@@ -86,6 +99,9 @@ export type NavigationItemDto = {
   icon: string | null;
   categoryKey: string | null;
   searchKeywords: string[];
+  designStatus?: 'PUBLISHED' | 'WIP';
+  linkedListViewId?: string | null;
+  linkedFormLayoutId?: string | null;
   children: NavigationItemDto[];
 };
 
@@ -114,6 +130,9 @@ export type NavigationItemCreateRequest = {
   requiredPermissions?: string[];
   requiredRoles?: string[];
   scope: NavigationItemScope;
+  designStatus?: 'PUBLISHED' | 'WIP';
+  linkedListViewId?: string | null;
+  linkedFormLayoutId?: string | null;
 };
 
 export type NavigationItemCreatedResponse = {
@@ -146,6 +165,9 @@ export type NavigationItemPatchRequest = {
   requiredRoles?: string[];
   active?: boolean;
   promoteToGlobal?: boolean;
+  designStatus?: 'PUBLISHED' | 'WIP';
+  linkedListViewId?: string | null;
+  linkedFormLayoutId?: string | null;
 };
 
 export async function patchNavigationItem(
@@ -180,6 +202,9 @@ export type NavigationAdminItemDto = {
   requiredPermissions: string[];
   requiredRoles: string[];
   active: boolean;
+  designStatus?: 'PUBLISHED' | 'WIP';
+  linkedListViewId?: string | null;
+  linkedFormLayoutId?: string | null;
 };
 
 export type NavigationAdminListResponse = {
@@ -302,6 +327,109 @@ export async function syncSystemEntityCatalog(
   return { syncedManifestKeys: data.syncedManifestKeys ?? [] };
 }
 
+/** DDL import (entity-builder {@code /v1/entities/import/ddl}). */
+export type DdlImportPreviewRequest = {
+  ddl: string;
+  storageMode?: string;
+  coreBindingService?: string | null;
+  excludeAuditColumns?: boolean | null;
+  createRelationshipsFromForeignKeys?: boolean | null;
+  skipColumnSlugs?: string[];
+  categoryKey?: string | null;
+};
+
+export type DdlImportApplyRequest = DdlImportPreviewRequest & {
+  tableOverrides?: DdlTableApplyOverride[];
+};
+
+export type DdlTableApplyOverride = {
+  parsedEntitySlug?: string | null;
+  entityName?: string | null;
+  entitySlug?: string | null;
+};
+
+export type DdlFieldPreviewDto = {
+  columnName: string;
+  fieldSlug: string;
+  sqlDataType: string;
+  proposedFieldType: string;
+  required: boolean;
+  primaryKey: boolean;
+  fkTargetTable?: string | null;
+  fkTargetEntitySlug?: string | null;
+  targetEntityResolvable?: boolean | null;
+  warnings: string[];
+};
+
+export type DdlRelationshipPreviewDto = {
+  relationshipSlug: string;
+  name: string;
+  cardinality: string;
+  fromEntitySlug: string;
+  toEntitySlug: string;
+  fromFieldSlug?: string | null;
+  toFieldSlug?: string | null;
+  creatableAfterImport: boolean;
+  skipReason?: string | null;
+};
+
+export type DdlTablePreviewDto = {
+  rawTableName: string;
+  proposedEntitySlug: string;
+  proposedEntityName: string;
+  defaultDisplayFieldSlug?: string | null;
+  fields: DdlFieldPreviewDto[];
+  relationships: DdlRelationshipPreviewDto[];
+};
+
+export type DdlImportPreviewResponse = {
+  tables: DdlTablePreviewDto[];
+  warnings: string[];
+};
+
+export type DdlCreatedFieldSummary = {
+  id: string;
+  slug: string;
+  fieldType: string;
+};
+
+export type DdlCreatedEntitySummary = {
+  id: string;
+  slug: string;
+  name: string;
+  fields: DdlCreatedFieldSummary[];
+};
+
+export type DdlCreatedRelationshipSummary = {
+  id: string;
+  slug: string;
+};
+
+export type DdlImportApplyResponse = {
+  entities: DdlCreatedEntitySummary[];
+  relationships: DdlCreatedRelationshipSummary[];
+};
+
+export async function previewDdlImport(body: DdlImportPreviewRequest): Promise<DdlImportPreviewResponse> {
+  const res = await apiFetch('/v1/entities/import/ddl/preview', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new ApiHttpError(res.status, await readApiError(res));
+  return (await res.json()) as DdlImportPreviewResponse;
+}
+
+export async function applyDdlImport(body: DdlImportApplyRequest): Promise<DdlImportApplyResponse> {
+  const res = await apiFetch('/v1/entities/import/ddl', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new ApiHttpError(res.status, await readApiError(res));
+  return (await res.json()) as DdlImportApplyResponse;
+}
+
 export async function listEntities(params?: { q?: string; categoryKey?: string }): Promise<EntityDto[]> {
   const q = new URLSearchParams();
   if (params?.q != null && params.q.trim() !== '') q.set('q', params.q.trim());
@@ -323,16 +451,22 @@ export async function createEntity(body: {
   slug: string;
   description?: string | null;
   status?: string | null;
+  /** Requires platform schema write when {@code STANDARD_OBJECT}. */
+  definitionScope?: DefinitionScope;
 }): Promise<EntityDto> {
+  const payload: Record<string, unknown> = {
+    name: body.name,
+    slug: body.slug,
+    description: body.description ?? undefined,
+    status: body.status ?? 'ACTIVE',
+  };
+  if (body.definitionScope != null) {
+    payload.definitionScope = body.definitionScope;
+  }
   const res = await apiFetch('/v1/entities', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      name: body.name,
-      slug: body.slug,
-      description: body.description ?? undefined,
-      status: body.status ?? 'ACTIVE',
-    }),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error(await readApiError(res));
   return (await res.json()) as EntityDto;
@@ -347,6 +481,8 @@ export async function patchEntity(
     status: string;
     defaultDisplayFieldSlug: string | null;
     clearDefaultDisplayField: boolean;
+    /** Requires platform schema write when changing to/from {@code STANDARD_OBJECT}. */
+    definitionScope: DefinitionScope;
   }>
 ): Promise<EntityDto> {
   const res = await apiFetch(`/v1/entities/${entityId}`, {
@@ -384,6 +520,22 @@ export async function createField(
   return (await res.json()) as EntityFieldDto;
 }
 
+/** Empty or null {@code label} removes the row for that locale. */
+export async function putFieldLabel(
+  entityId: string,
+  fieldId: string,
+  locale: string,
+  label: string | null
+): Promise<EntityFieldDto> {
+  const res = await apiFetch(`/v1/entities/${entityId}/fields/${fieldId}/labels/${encodeURIComponent(locale)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ label: label ?? '' }),
+  });
+  if (!res.ok) throw new Error(await readApiError(res));
+  return (await res.json()) as EntityFieldDto;
+}
+
 export async function patchField(
   entityId: string,
   fieldId: string,
@@ -408,6 +560,70 @@ export async function patchField(
   return (await res.json()) as EntityFieldDto;
 }
 
+/** Schema relationship for record links; FK-style reference fields typically use {@code from}=target entity, {@code to}=entity that holds the field. */
+export type EntityRelationshipDto = {
+  id: string;
+  tenantId: string;
+  name: string;
+  slug: string;
+  fromEntityId: string;
+  toEntityId: string;
+  fromFieldSlug: string | null;
+  toFieldSlug: string | null;
+  cardinality: string;
+  definitionScope?: DefinitionScope;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function listEntityRelationships(): Promise<EntityRelationshipDto[]> {
+  const res = await apiFetch('/v1/entity-relationships');
+  if (!res.ok) throw new Error(await readApiError(res));
+  return (await res.json()) as EntityRelationshipDto[];
+}
+
+export async function createEntityRelationship(body: {
+  name: string;
+  slug: string;
+  cardinality: string;
+  fromEntityId: string;
+  toEntityId: string;
+  fromFieldSlug?: string | null;
+  toFieldSlug?: string | null;
+}): Promise<EntityRelationshipDto> {
+  const res = await apiFetch('/v1/entity-relationships', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await readApiError(res));
+  return (await res.json()) as EntityRelationshipDto;
+}
+
+export async function patchEntityRelationship(
+  id: string,
+  body: Partial<{
+    name: string;
+    slug: string;
+    cardinality: string;
+    fromFieldSlug: string | null;
+    toFieldSlug: string | null;
+  }>
+): Promise<EntityRelationshipDto> {
+  const res = await apiFetch(`/v1/entity-relationships/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await readApiError(res));
+  return (await res.json()) as EntityRelationshipDto;
+}
+
+export async function deleteEntityRelationship(id: string): Promise<void> {
+  const res = await apiFetch(`/v1/entity-relationships/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(await readApiError(res));
+}
+
 export type RecordLookupItemDto = {
   recordId: string;
   displayLabel: string;
@@ -421,13 +637,25 @@ export type RecordLookupResponse = {
 export async function lookupRecords(
   tenantId: string,
   entityId: string,
-  params: { term: string; limit?: number; displaySlugs?: string[] }
+  params: {
+    term: string;
+    limit?: number;
+    displaySlugs?: string[];
+    assignedForEntityId?: string | null;
+    assignedForEntityFieldId?: string | null;
+  }
 ): Promise<RecordLookupResponse> {
   const q = new URLSearchParams();
   q.set('term', params.term);
   if (params.limit != null) q.set('limit', String(params.limit));
   for (const s of params.displaySlugs ?? []) {
     q.append('displaySlugs', s);
+  }
+  if (params.assignedForEntityId?.trim()) {
+    q.set('assignedForEntityId', params.assignedForEntityId.trim());
+  }
+  if (params.assignedForEntityFieldId?.trim()) {
+    q.set('assignedForEntityFieldId', params.assignedForEntityFieldId.trim());
   }
   const res = await apiFetch(`/v1/tenants/${tenantId}/entities/${entityId}/records/lookup?${q.toString()}`);
   if (!res.ok) throw new Error(await readApiError(res));
@@ -445,12 +673,17 @@ export type RecordDto = {
   entityId: string;
   externalId: string | null;
   businessDocumentNumber: string | null;
-  createdBy: string;
+  createdBy: string | null;
+  updatedBy: string | null;
   status: string;
   values: Record<string, unknown>;
   links: RecordLinkDto[];
   createdAt: string;
   updatedAt: string;
+  createdByLabel?: string | null;
+  updatedByLabel?: string | null;
+  entityStatusId?: string | null;
+  entityStatusDisplayLabel?: string | null;
 };
 
 export type PageResponse<T> = {
@@ -468,8 +701,15 @@ export type RecordQueryFilterNode = {
   children?: RecordQueryFilterNode[];
 };
 
+/** Sort entity list query by record row timestamps. */
+export type RecordQuerySort = {
+  field?: 'record.updated_at' | 'record.created_at';
+  direction?: 'asc' | 'desc';
+};
+
 export type RecordQueryRequest = {
   filter?: RecordQueryFilterNode;
+  sort?: RecordQuerySort;
   page?: number;
   pageSize?: number;
 };
@@ -477,17 +717,112 @@ export type RecordQueryRequest = {
 export async function listRecords(
   tenantId: string,
   entityId: string,
-  params?: { page?: number; pageSize?: number }
+  params?: {
+    page?: number;
+    pageSize?: number;
+    assignedForEntityId?: string | null;
+    assignedForEntityFieldId?: string | null;
+  }
 ): Promise<PageResponse<RecordDto>> {
   const q = new URLSearchParams();
   if (params?.page != null) q.set('page', String(params.page));
   if (params?.pageSize != null) q.set('pageSize', String(params.pageSize));
+  if (params?.assignedForEntityId?.trim()) {
+    q.set('assignedForEntityId', params.assignedForEntityId.trim());
+  }
+  if (params?.assignedForEntityFieldId?.trim()) {
+    q.set('assignedForEntityFieldId', params.assignedForEntityFieldId.trim());
+  }
   const qs = q.toString();
   const res = await apiFetch(
     `/v1/tenants/${tenantId}/entities/${entityId}/records${qs ? `?${qs}` : ''}`
   );
   if (!res.ok) throw new Error(await readApiError(res));
   return (await res.json()) as PageResponse<RecordDto>;
+}
+
+export type EntityStatusAssignmentRowDto = {
+  entityStatusId: string;
+  code: string;
+  label: string;
+  sortOrder: number;
+};
+
+export type EntityStatusAvailableDto = {
+  entityStatusId: string;
+  code: string;
+  label: string;
+};
+
+export async function getEntityStatusAssignments(
+  tenantId: string,
+  entityDefinitionId: string
+): Promise<EntityStatusAssignmentRowDto[]> {
+  const res = await apiFetch(
+    `/v1/tenants/${tenantId}/entities/${entityDefinitionId}/entity-status-assignments`
+  );
+  if (!res.ok) throw new Error(await readApiError(res));
+  return (await res.json()) as EntityStatusAssignmentRowDto[];
+}
+
+export async function getAssignableEntityStatuses(
+  tenantId: string,
+  entityDefinitionId: string
+): Promise<EntityStatusAvailableDto[]> {
+  const res = await apiFetch(
+    `/v1/tenants/${tenantId}/entities/${entityDefinitionId}/entity-status-assignments/available`
+  );
+  if (!res.ok) throw new Error(await readApiError(res));
+  return (await res.json()) as EntityStatusAvailableDto[];
+}
+
+export async function putEntityStatusAssignments(
+  tenantId: string,
+  entityDefinitionId: string,
+  entityStatusIds: string[]
+): Promise<EntityStatusAssignmentRowDto[]> {
+  const res = await apiFetch(
+    `/v1/tenants/${tenantId}/entities/${entityDefinitionId}/entity-status-assignments`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entityStatusIds }),
+    }
+  );
+  if (!res.ok) throw new Error(await readApiError(res));
+  return (await res.json()) as EntityStatusAssignmentRowDto[];
+}
+
+export async function getEntityStatusAssignmentsForField(
+  entityId: string,
+  fieldId: string
+): Promise<EntityStatusAssignmentRowDto[]> {
+  const res = await apiFetch(`/v1/entities/${entityId}/fields/${fieldId}/entity-status-assignments`);
+  if (!res.ok) throw new Error(await readApiError(res));
+  return (await res.json()) as EntityStatusAssignmentRowDto[];
+}
+
+export async function getAssignableEntityStatusesForField(
+  entityId: string,
+  fieldId: string
+): Promise<EntityStatusAvailableDto[]> {
+  const res = await apiFetch(`/v1/entities/${entityId}/fields/${fieldId}/entity-status-assignments/available`);
+  if (!res.ok) throw new Error(await readApiError(res));
+  return (await res.json()) as EntityStatusAvailableDto[];
+}
+
+export async function putEntityStatusAssignmentsForField(
+  entityId: string,
+  fieldId: string,
+  entityStatusIds: string[]
+): Promise<EntityStatusAssignmentRowDto[]> {
+  const res = await apiFetch(`/v1/entities/${entityId}/fields/${fieldId}/entity-status-assignments`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ entityStatusIds }),
+  });
+  if (!res.ok) throw new Error(await readApiError(res));
+  return (await res.json()) as EntityStatusAssignmentRowDto[];
 }
 
 export async function queryRecords(
@@ -669,7 +1004,7 @@ export async function getFormLayout(entityId: string, layoutId: string): Promise
 
 export async function createFormLayout(
   entityId: string,
-  body: { name: string; layout: LayoutV2; isDefault?: boolean }
+  body: { name: string; layout: LayoutV2; isDefault?: boolean; status?: 'ACTIVE' | 'WIP' }
 ): Promise<FormLayoutDto> {
   const res = await apiFetch(`/v1/entities/${entityId}/form-layouts`, {
     method: 'POST',
@@ -678,6 +1013,7 @@ export async function createFormLayout(
       name: body.name,
       layout: body.layout,
       isDefault: body.isDefault ?? false,
+      ...(body.status ? { status: body.status } : {}),
     }),
   });
   if (!res.ok) throw new Error(await readApiError(res));
@@ -746,7 +1082,7 @@ export async function getRecordListView(entityId: string, viewId: string): Promi
 
 export async function createRecordListView(
   entityId: string,
-  body: { name: string; definition: Record<string, unknown>; isDefault?: boolean }
+  body: { name: string; definition: Record<string, unknown>; isDefault?: boolean; status?: 'ACTIVE' | 'WIP' }
 ): Promise<RecordListViewDto> {
   const res = await apiFetch(`/v1/entities/${entityId}/record-list-views`, {
     method: 'POST',
@@ -755,6 +1091,7 @@ export async function createRecordListView(
       name: body.name,
       definition: body.definition,
       isDefault: body.isDefault ?? false,
+      ...(body.status ? { status: body.status } : {}),
     }),
   });
   if (!res.ok) throw new Error(await readApiError(res));

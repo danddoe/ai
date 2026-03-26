@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 
 /**
- * Seeds a tenant + superadmin user when the database has no tenants (local / first boot).
+ * Seeds a tenant + superadmin user and a separate system-builder user when the database has no tenants (local / first boot).
  * <p>
  * Activate: {@code --spring.profiles.active=default-bootstrap}
  * <p>
@@ -82,6 +82,34 @@ public class BootstrapData {
                 rp.setRoleId(role.getId());
                 rp.setPermissionId(p.getId());
                 rolePermissionRepository.save(rp);
+            }
+
+            String builderEmail = seed.getSystemBuilderEmail() != null ? seed.getSystemBuilderEmail().trim() : "";
+            if (!builderEmail.isEmpty()
+                    && !builderEmail.equalsIgnoreCase(seed.getAdminEmail() != null ? seed.getAdminEmail().trim() : "")) {
+                String builderPwd = seed.getSystemBuilderPassword();
+                if (builderPwd == null || builderPwd.isBlank()) {
+                    builderPwd = seed.getAdminPassword();
+                }
+                User builder = new User();
+                builder.setEmail(builderEmail);
+                builder.setPasswordHash(passwordEncoder.encode(builderPwd));
+                builder.setDisplayName(seed.getSystemBuilderDisplayName());
+                builder.setStatus("ACTIVE");
+                builder = userRepository.save(builder);
+
+                TenantUser tuBuilder = new TenantUser();
+                tuBuilder.setTenantId(tenant.getId());
+                tuBuilder.setUserId(builder.getId());
+                tuBuilder.setStatus("ACTIVE");
+                tuBuilder.setJoinedAt(java.time.Instant.now());
+                tenantUserRepository.save(tuBuilder);
+
+                UserRole urBuilder = new UserRole();
+                urBuilder.setTenantId(tenant.getId());
+                urBuilder.setUserId(builder.getId());
+                urBuilder.setRoleId(role.getId());
+                userRoleRepository.save(urBuilder);
             }
         };
     }

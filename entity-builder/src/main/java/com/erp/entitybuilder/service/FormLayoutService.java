@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -56,7 +57,7 @@ public class FormLayoutService {
     }
 
     @Transactional
-    public FormLayout create(UUID tenantId, UUID entityId, String name, String layoutJson, boolean isDefault) {
+    public FormLayout create(UUID tenantId, UUID entityId, String name, String layoutJson, boolean isDefault, String statusRaw) {
         entityRepository.findById(entityId)
                 .filter(e -> tenantId.equals(e.getTenantId()))
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "not_found", "Entity not found"));
@@ -73,7 +74,7 @@ public class FormLayoutService {
         l.setName(name);
         l.setLayout(layoutJson);
         l.setDefault(isDefault);
-        l.setStatus("ACTIVE");
+        l.setStatus(normalizeFormLayoutStatus(statusRaw));
 
         if (isDefault) {
             // v1: best-effort default enforcement
@@ -99,7 +100,7 @@ public class FormLayoutService {
         } catch (JsonProcessingException e) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "bad_request", "Could not process template layout");
         }
-        return create(tenantId, entityId, name, mapped, isDefault);
+        return create(tenantId, entityId, name, mapped, isDefault, null);
     }
 
     @Transactional(readOnly = true)
@@ -118,7 +119,7 @@ public class FormLayoutService {
             layoutJsonValidator.validateOrThrow(json);
             l.setLayout(json);
         });
-        status.filter(v -> v != null && !v.isBlank()).ifPresent(l::setStatus);
+        status.filter(v -> v != null && !v.isBlank()).ifPresent(v -> l.setStatus(normalizeFormLayoutStatus(v)));
 
         if (isDefault.isPresent()) {
             boolean newDefault = isDefault.get();
@@ -140,6 +141,17 @@ public class FormLayoutService {
     public void delete(UUID tenantId, UUID layoutId) {
         FormLayout l = get(tenantId, layoutId);
         formLayoutRepository.delete(l);
+    }
+
+    private static String normalizeFormLayoutStatus(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return "ACTIVE";
+        }
+        String s = raw.trim().toUpperCase(Locale.ROOT);
+        if ("ACTIVE".equals(s) || "WIP".equals(s)) {
+            return s;
+        }
+        throw new ApiException(HttpStatus.BAD_REQUEST, "bad_request", "status must be ACTIVE or WIP");
     }
 
     private String applyFieldSlugMapping(String templateJson, Map<String, UUID> slugToId) throws JsonProcessingException {

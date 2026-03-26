@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Anchor, Button } from '@mantine/core';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   createFormLayout,
   getEntity,
+  listFields,
   listFormLayouts,
   listRecordListViews,
   type EntityDto,
@@ -10,22 +12,33 @@ import {
   type RecordListViewDto,
 } from '../api/schemas';
 import { useAuth } from '../auth/AuthProvider';
-import { blankLayoutV2 } from '../utils/layoutV2';
-import { parseRecordListViewDefinition } from '../utils/recordListViewDefinition';
-import { recordsListPathForViewId } from '../utils/recordsListNav';
+import { canMutateEntityDefinition } from '../auth/jwtPermissions';
 import { TemplatePickerModal } from '../components/builder/TemplatePickerModal';
 import { EntitySettingsModal } from '../components/EntitySettingsModal';
+import { EntityStatusAssignmentsPanel } from '../components/EntityStatusAssignmentsPanel';
+import { blankLayoutV2 } from '../utils/layoutV2';
+import { parseRecordListViewDefinition } from '../utils/recordListViewDefinition';
+import { readReferenceFieldConfig } from '../utils/referenceFieldConfig';
+import { recordsListPathForViewId } from '../utils/recordsListNav';
+import { ENTITY_STATUS_ENTITY_SLUG } from '../utils/entityStatusCatalog';
 
 export function EntityLayoutsPage() {
   const { entityId = '' } = useParams();
   const navigate = useNavigate();
-  const { canSchemaWrite } = useAuth();
+  const { tenantId, canSchemaWrite, permissions } = useAuth();
   const [entity, setEntity] = useState<EntityDto | null>(null);
   const [layouts, setLayouts] = useState<FormLayoutDto[] | null>(null);
   const [listViews, setListViews] = useState<RecordListViewDto[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tplOpen, setTplOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  const [statusRefFieldPresent, setStatusRefFieldPresent] = useState(false);
+
+  const canEditEntityDefinition = useMemo(
+    () => (entity ? canMutateEntityDefinition(permissions, entity) : false),
+    [entity, permissions]
+  );
 
   const load = useCallback(async () => {
     if (!entityId) return;
@@ -50,6 +63,30 @@ export function EntityLayoutsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!entityId || !canSchemaWrite || !canEditEntityDefinition) {
+      setStatusRefFieldPresent(false);
+      return;
+    }
+    let cancelled = false;
+    void listFields(entityId)
+      .then((fields) => {
+        if (cancelled) return;
+        const has = fields.some(
+          (f) =>
+            f.fieldType?.toLowerCase() === 'reference' &&
+            readReferenceFieldConfig(f.config).targetEntitySlug === ENTITY_STATUS_ENTITY_SLUG
+        );
+        setStatusRefFieldPresent(has);
+      })
+      .catch(() => {
+        if (!cancelled) setStatusRefFieldPresent(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [entityId, canSchemaWrite, canEditEntityDefinition]);
 
   async function newBlankLayout() {
     if (!canSchemaWrite) return;
@@ -89,28 +126,33 @@ export function EntityLayoutsPage() {
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {canSchemaWrite && (
             <>
-              <button type="button" className="btn btn-secondary" onClick={() => void newBlankLayout()}>
+              <Button type="button" variant="default" onClick={() => void newBlankLayout()}>
                 New blank layout
-              </button>
-              <button type="button" className="btn btn-primary" onClick={() => setTplOpen(true)}>
+              </Button>
+              <Button type="button" onClick={() => setTplOpen(true)}>
                 From template
-              </button>
+              </Button>
             </>
           )}
-          {entity && canSchemaWrite && (
-            <button type="button" className="btn btn-secondary" onClick={() => setSettingsOpen(true)}>
+          {entity && canEditEntityDefinition && (
+            <Button type="button" variant="default" onClick={() => setSettingsOpen(true)}>
               Entity settings
-            </button>
+            </Button>
+          )}
+          {entity && canSchemaWrite && !canEditEntityDefinition && entity.definitionScope === 'STANDARD_OBJECT' && (
+            <span className="builder-muted" style={{ alignSelf: 'center', fontSize: '0.9rem' }}>
+              Catalog entity — open extensions or create your own entities to customize schema.
+            </span>
           )}
           {entity && (
-            <Link className="btn btn-secondary" to={`/entities/${entityId}/records`}>
+            <Button component={Link} variant="default" to={`/entities/${entityId}/records`}>
               Records
-            </Link>
+            </Button>
           )}
           {canSchemaWrite && entity && (
-            <Link className="btn btn-secondary" to={`/entities/${entityId}/list-views/new`}>
+            <Button component={Link} variant="default" to={`/entities/${entityId}/list-views/new`}>
               New list view
-            </Link>
+            </Button>
           )}
         </div>
       </header>
@@ -166,15 +208,25 @@ export function EntityLayoutsPage() {
                 </span>
               </Link>
               <div style={{ marginTop: 6, paddingLeft: 4 }}>
-                <Link className="link-btn" to={openInRecordsTo}>
+                <Anchor component={Link} to={openInRecordsTo} size="sm">
                   Open in records
-                </Link>
+                </Anchor>
               </div>
             </li>
           );
         })}
       </ul>
       {listViews && listViews.length === 0 && <p className="builder-muted">No saved list views yet.</p>}
+
+      {canSchemaWrite && canEditEntityDefinition && tenantId && (
+        <EntityStatusAssignmentsPanel
+          tenantId={tenantId}
+          entityId={entityId}
+          scope={{ kind: 'entity' }}
+          statusRefFieldPresent={statusRefFieldPresent}
+          layout="page"
+        />
+      )}
 
       {tplOpen && (
         <TemplatePickerModal
@@ -188,7 +240,14 @@ export function EntityLayoutsPage() {
           entityId={entityId}
           entity={entity}
           onClose={() => setSettingsOpen(false)}
-          onSaved={(e) => setEntity(e)}
+          onSaved={async (e) => {
+            setEntity(e);
+            try {
+              setEntity(await getEntity(entityId));
+            } catch {
+              /* keep PATCH response */
+            }
+          }}
         />
       )}
     </div>

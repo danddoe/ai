@@ -3,6 +3,8 @@
     "loan_application",
     "company",
     "business_unit",
+    "entity_status",
+    "entity_status_assignment",
     "region",
     "location",
     "property",

@@ -1,0 +1,2 @@
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS default_locale VARCHAR(16) NULL;
+ALTER TABLE tenant_users ADD COLUMN IF NOT EXISTS preferred_locale VARCHAR(16) NULL;

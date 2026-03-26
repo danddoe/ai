@@ -1,3 +1,4 @@
+import { Button, Group, Stack, TextInput } from '@mantine/core';
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
@@ -95,53 +96,46 @@ export function LoanHybridDemoPage() {
         <Link to="/home">← Home</Link>
       </p>
 
-      <section style={{ marginTop: 24 }}>
-        <label className="builder-field-label">
-          Tenant ID (UUID)
-          <input
-            className="builder-input"
-            value={tenantId}
-            onChange={(e) => setTenantId(e.target.value)}
-            placeholder="From JWT tenant_id"
-            style={{ width: '100%', maxWidth: 420 }}
-          />
-        </label>
-      </section>
+      <Stack mt="lg" maw={420}>
+        <TextInput
+          label="Tenant ID (UUID)"
+          value={tenantId}
+          onChange={(e) => setTenantId(e.target.value)}
+          placeholder="From JWT tenant_id"
+        />
+      </Stack>
 
-      <div style={{ marginTop: 16, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <button type="button" className="builder-btn builder-btn-secondary" disabled={busy} onClick={runSync}>
+      <Group mt="md" gap="sm" wrap="wrap">
+        <Button type="button" variant="default" disabled={busy} onClick={runSync}>
           Sync system catalog (loan_application)
-        </button>
-      </div>
+        </Button>
+      </Group>
 
       <h2 style={{ marginTop: 32 }}>Create loan</h2>
-      <div className="builder-form-grid" style={{ maxWidth: 480 }}>
-        <label className="builder-field-label">
-          Status
-          <input className="builder-input" value={status} onChange={(e) => setStatus(e.target.value)} />
-        </label>
-        <label className="builder-field-label">
-          Requested amount
-          <input className="builder-input" value={amount} onChange={(e) => setAmount(e.target.value)} />
-        </label>
-        <label className="builder-field-label">
-          Product code (optional)
-          <input className="builder-input" value={productCode} onChange={(e) => setProductCode(e.target.value)} />
-        </label>
-        <label className="builder-field-label">
-          Branch notes (EAV extension)
-          <input className="builder-input" value={branchNotes} onChange={(e) => setBranchNotes(e.target.value)} />
-        </label>
-      </div>
-      <button type="button" className="builder-btn builder-btn-primary" style={{ marginTop: 12 }} disabled={busy} onClick={runCreate}>
-        Create + merge
-      </button>
-
-      {loan && (
-        <button type="button" className="builder-btn builder-btn-secondary" style={{ marginLeft: 8 }} disabled={busy} onClick={reloadMerged}>
-          Reload merged view
-        </button>
-      )}
+      <Stack maw={480}>
+        <TextInput label="Status" value={status} onChange={(e) => setStatus(e.target.value)} />
+        <TextInput label="Requested amount" value={amount} onChange={(e) => setAmount(e.target.value)} />
+        <TextInput
+          label="Product code (optional)"
+          value={productCode}
+          onChange={(e) => setProductCode(e.target.value)}
+        />
+        <TextInput
+          label="Branch notes (EAV extension)"
+          value={branchNotes}
+          onChange={(e) => setBranchNotes(e.target.value)}
+        />
+      </Stack>
+      <Group mt="sm" gap="sm" wrap="wrap">
+        <Button type="button" disabled={busy} onClick={runCreate}>
+          Create + merge
+        </Button>
+        {loan ? (
+          <Button type="button" variant="default" disabled={busy} onClick={reloadMerged}>
+            Reload merged view
+          </Button>
+        ) : null}
+      </Group>
 
       {error && (
         <p role="alert" className="text-error" style={{ marginTop: 16 }}>

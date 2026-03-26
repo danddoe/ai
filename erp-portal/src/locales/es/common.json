@@ -1,0 +1,44 @@
+{
+  "appTitle": "ERP",
+  "header": {
+    "expandSidebar": "Expandir barra lateral",
+    "collapseSidebar": "Contraer barra lateral",
+    "formBuilderBadge": "Editor de formularios",
+    "formBuilderTitle": "Editor de formularios — navegación oculta",
+    "listDesignerBadge": "Diseñador de listas",
+    "listDesignerTitle": "Diseñador de listas — navegación oculta",
+    "logOut": "Cerrar sesión"
+  },
+  "nav": {
+    "moduleNavAria": "Navegación de módulos",
+    "expandNav": "Expandir navegación",
+    "wipBadge": "WIP",
+    "wipTitle": "Diseño en curso",
+    "loadError": "No se pudo cargar la navegación: {{message}}"
+  },
+  "login": {
+    "checkingSession": "Comprobando sesión…",
+    "signInTitle": "Iniciar sesión",
+    "blurb": "API gateway + IAM. En modo cookie, el refresco se guarda en una cookie httpOnly.",
+    "tenantLabel": "Slug o ID del inquilino",
+    "email": "Correo electrónico",
+    "password": "Contraseña",
+    "signInFailed": "Error al iniciar sesión",
+    "loginFailed": "Error de inicio de sesión",
+    "signingIn": "Iniciando sesión…",
+    "signIn": "Entrar"
+  },
+  "home": {
+    "title": "Inicio",
+    "welcome": "Bienvenido al portal ERP. Use la búsqueda (Ctrl+K / ⌘K) o abra un módulo abajo.",
+    "general": "General",
+    "navErrorBefore": "No se pudo cargar la navegación. Aún puede abrir",
+    "navErrorLink": "Entidades",
+    "navErrorAfter": "."
+  },
+  "language": {
+    "label": "Idioma",
+    "en": "English",
+    "es": "Español"
+  }
+}

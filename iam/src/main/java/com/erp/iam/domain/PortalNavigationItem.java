@@ -61,6 +61,18 @@ public class PortalNavigationItem {
     @Column(name = "is_active", nullable = false)
     private boolean active = true;
 
+    /** PUBLISHED (live) or WIP (being edited in designers). */
+    @Column(name = "design_status", nullable = false, length = 32)
+    private String designStatus = "PUBLISHED";
+
+    /** Optional entity-builder record_list_views.id (same tenant; not enforced as FK). */
+    @Column(name = "linked_list_view_id", columnDefinition = "uuid")
+    private UUID linkedListViewId;
+
+    /** Optional entity-builder form_layouts.id (same tenant; not enforced as FK). */
+    @Column(name = "linked_form_layout_id", columnDefinition = "uuid")
+    private UUID linkedFormLayoutId;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -192,6 +204,30 @@ public class PortalNavigationItem {
 
     public void setActive(boolean active) {
         this.active = active;
+    }
+
+    public String getDesignStatus() {
+        return designStatus;
+    }
+
+    public void setDesignStatus(String designStatus) {
+        this.designStatus = designStatus != null ? designStatus : "PUBLISHED";
+    }
+
+    public UUID getLinkedListViewId() {
+        return linkedListViewId;
+    }
+
+    public void setLinkedListViewId(UUID linkedListViewId) {
+        this.linkedListViewId = linkedListViewId;
+    }
+
+    public UUID getLinkedFormLayoutId() {
+        return linkedFormLayoutId;
+    }
+
+    public void setLinkedFormLayoutId(UUID linkedFormLayoutId) {
+        this.linkedFormLayoutId = linkedFormLayoutId;
     }
 
     public Instant getCreatedAt() {

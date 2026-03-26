@@ -92,6 +92,9 @@ Records:
   - Optional header: `Idempotency-Key`
 - `GET /v1/tenants/{tenantId}/entities/{entityId}/records`
 - `POST /v1/tenants/{tenantId}/entities/{entityId}/records/query` — JSON body: optional nested `filter` (groups with `op` `and`/`or` and `children`, or leaf clauses with `field` slug, `op`, and `value`). Operators are type-specific (e.g. number/date: `eq`, `gte`, `between`, `in`; text: `contains`, `starts_with`). PII fields require `entity_builder:pii:read`. Omit `filter` to return all records (paginated). Same auth as record list.
+  - **System row filters:** clause `field` may be `record.created_at`, `record.updated_at` (ISO-8601 instants, same ops as date fields), or `record.created_by` / `record.updated_by` (UUID, `eq`/`ne`/`in`/`is_null`/`is_not_null`).
+  - **Sort:** optional `sort`: `{ "field": "record.updated_at" | "record.created_at", "direction": "asc" | "desc" }` (default sort remains `record.updated_at` descending).
+- Record responses include `createdBy`, `updatedBy`, optional `createdByLabel` / `updatedByLabel` (when IAM `users` / `tenant_users` are available to the service), and timestamps on the `entity_records` row.
 - `GET /v1/tenants/{tenantId}/entities/{entityId}/records/lookup` — typeahead / picker search over `search_vector`
 - `GET /v1/tenants/{tenantId}/entities/{entityId}/records/{recordId}`
 - `PATCH /v1/tenants/{tenantId}/entities/{entityId}/records/{recordId}`
@@ -122,3 +125,4 @@ End-to-end system tests in `src/test/java/com/erp/entitybuilder/e2e/` exercise e
 
 If CockroachDB is not reachable, E2E tests are skipped.
 
+./gradlew :entity-builder:bootRun --args="--spring.profiles.active=default-bootstrap"    

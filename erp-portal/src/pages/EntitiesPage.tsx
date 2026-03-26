@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { Anchor, Badge, Button, Code, Group, Stack, Text, TextInput, Title } from '@mantine/core';
 import { listEntities, syncSystemEntityCatalog, type EntityDto } from '../api/schemas';
 import { useAuth } from '../auth/AuthProvider';
 import { CreateEntityModal } from '../components/CreateEntityModal';
@@ -8,7 +9,14 @@ const SEARCH_DEBOUNCE_MS = 300;
 
 export function EntitiesPage() {
   const navigate = useNavigate();
-  const { canSchemaWrite, canCreatePortalNavItem, canRecordsRead, tenantId } = useAuth();
+  const {
+    canSchemaRead,
+    canSchemaWrite,
+    canPlatformSchemaWrite,
+    canCreatePortalNavItem,
+    canRecordsRead,
+    tenantId,
+  } = useAuth();
   const [entities, setEntities] = useState<EntityDto[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -42,7 +50,7 @@ export function EntitiesPage() {
   }, [load]);
 
   async function onSyncCatalog() {
-    if (!tenantId.trim() || !canSchemaWrite) return;
+    if (!tenantId.trim() || !canPlatformSchemaWrite) return;
     setSyncSuccess(null);
     setSyncError(null);
     setSyncBusy(true);
@@ -62,109 +70,148 @@ export function EntitiesPage() {
   }
 
   return (
-    <div className="page-shell">
-      <header className="page-header">
-        <div>
-          <h1 className="page-title">Entities</h1>
-          <p className="page-sub">Open form layouts for an entity.</p>
-        </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+    <Stack gap="lg" className="page-shell">
+      <Group justify="space-between" align="flex-start" wrap="wrap" gap="md">
+        <Stack gap={4}>
+          <Title order={1} size="h2">
+            Entities
+          </Title>
+          <Text c="dimmed" size="sm">
+            Open form layouts for an entity.
+          </Text>
+        </Stack>
+        <Group gap="xs" wrap="wrap">
+          {canSchemaWrite && (
+            <Button variant="default" size="sm" onClick={() => setCreateOpen(true)}>
+              Create entity
+            </Button>
+          )}
           {canSchemaWrite && tenantId.trim() && (
-            <button
-              type="button"
-              className="btn btn-secondary"
+            <Button
+              variant="default"
+              size="sm"
               disabled={syncBusy}
               onClick={() => void onSyncCatalog()}
               title="Import bundled system-entity-catalog manifests for this tenant"
             >
               {syncBusy ? 'Syncing catalog…' : 'Sync system catalog'}
-            </button>
+            </Button>
+          )}
+          {canSchemaRead && (
+            <Button component={Link} to="/entities/ddl-import" variant="default" size="sm">
+              Import from DDL
+            </Button>
           )}
           {canCreatePortalNavItem && (
-            <Link className="btn btn-secondary" to="/ui/create">
+            <Button component={Link} to="/ui/create" variant="default" size="sm">
               Create UI
-            </Link>
+            </Button>
           )}
-        </div>
-      </header>
+        </Group>
+      </Group>
       {syncSuccess && (
-        <p className="builder-muted" role="status">
+        <Text size="sm" c="dimmed" role="status">
           {syncSuccess}
-        </p>
+        </Text>
       )}
       {syncError && (
-        <p className="text-error" role="alert">
+        <Text role="alert" c="red" size="sm">
           {syncError}
-        </p>
+        </Text>
       )}
       {loadError && (
-        <p role="alert" className="text-error">
+        <Text role="alert" c="red" size="sm">
           {loadError}
-        </p>
+        </Text>
       )}
-      <div className="entity-list-toolbar" role="search">
-        <label className="field-label row entity-list-search-label" htmlFor="entities-search">
-          Search
-          <input
-            id="entities-search"
-            type="search"
-            className="input entity-list-search-input"
-            placeholder="Name, slug, or id…"
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </label>
-        {listLoading && <span className="builder-muted entity-list-search-status">Searching…</span>}
-      </div>
+      <Group align="flex-end" wrap="wrap" gap="md" role="search">
+        <TextInput
+          id="entities-search"
+          label="Search"
+          placeholder="Name, slug, or id…"
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          autoComplete="off"
+          style={{ flex: '1 1 240px', maxWidth: 400 }}
+          size="sm"
+        />
+        {listLoading && (
+          <Text size="sm" c="dimmed" mb={4}>
+            Searching…
+          </Text>
+        )}
+        {canSchemaWrite && (
+          <Button variant="default" size="xs" onClick={() => setCreateOpen(true)}>
+            Create entity
+          </Button>
+        )}
+      </Group>
       <ul className="entity-list">
         {entities?.map((e) => (
           <li key={e.id} className="entity-list-row">
-            <div className="entity-card entity-card-static">
-              <Link className="entity-card-name focusable" to={`/entities/${e.id}/records`}>
-                {e.name}
-              </Link>
-              <code className="entity-card-slug">{e.slug}</code>
+            <div
+              className="entity-card entity-card-static"
+              style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}
+            >
+              <Group gap="xs" wrap="wrap" align="center">
+                <Anchor component={Link} to={`/entities/${e.id}/records`} fw={600} className="entity-card-name focusable">
+                  {e.name}
+                </Anchor>
+                <Code className="entity-card-slug">{e.slug}</Code>
+                {e.definitionScope === 'STANDARD_OBJECT' && (
+                  <Badge size="sm" variant="outline" title="Platform catalog entity — definition/fields require full schema write">
+                    Catalog
+                  </Badge>
+                )}
+              </Group>
+              {e.description != null && e.description.trim() !== '' && (
+                <Text size="sm" c="dimmed" lineClamp={4} style={{ lineHeight: 1.45 }}>
+                  {e.description.trim()}
+                </Text>
+              )}
             </div>
             <div className="entity-card-actions">
-              <Link className="btn btn-primary btn-sm" to={`/entities/${e.id}/layouts`}>
+              <Button component={Link} to={`/entities/${e.id}/layouts`} size="xs">
                 Layouts
-              </Link>
+              </Button>
               {canRecordsRead && (
-                <Link className="btn btn-secondary btn-sm" to={`/entities/${e.id}/audit`}>
+                <Button component={Link} to={`/entities/${e.id}/audit`} variant="default" size="xs">
                   Activity
-                </Link>
+                </Button>
               )}
             </div>
           </li>
         ))}
       </ul>
       {entities && entities.length === 0 && (
-        <div className="builder-muted" style={{ marginTop: 8 }}>
+        <Stack gap="sm" mt="sm">
           {debouncedSearch ? (
-            <p>No entities match &quot;{debouncedSearch}&quot;.</p>
+            <Text c="dimmed" size="sm">
+              No entities match &quot;{debouncedSearch}&quot;.
+            </Text>
           ) : (
             <>
-              <p>No entities yet.</p>
+              <Text c="dimmed" size="sm">
+                No entities yet.
+              </Text>
               {canSchemaWrite && (
-                <button type="button" className="btn btn-primary btn-sm" onClick={() => setCreateOpen(true)}>
+                <Button size="sm" onClick={() => setCreateOpen(true)}>
                   Create your first entity
-                </button>
+                </Button>
               )}
             </>
           )}
-        </div>
+        </Stack>
       )}
-      <button type="button" className="btn btn-secondary btn-sm" style={{ marginTop: 16 }} onClick={() => void load()}>
+      <Button variant="default" size="xs" mt="md" onClick={() => void load()}>
         Reload
-      </button>
+      </Button>
       {createOpen && (
         <CreateEntityModal
           onClose={() => setCreateOpen(false)}
           onCreated={(e) => navigate(`/entities/${e.id}/layouts`)}
         />
       )}
-    </div>
+    </Stack>
   );
 }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Anchor, Button, Code, Group, Stack, Text, Title } from '@mantine/core';
 import { listEntities, type EntityDto } from '../api/schemas';
 import { useAuth } from '../auth/AuthProvider';
 
@@ -35,45 +36,59 @@ export function AuditHubPage() {
 
   if (!tenantId) {
     return (
-      <div className="page-shell">
-        <p role="alert" className="text-error">
+      <Stack className="page-shell">
+        <Text role="alert" c="red" size="sm">
           Missing <code>tenant_id</code> in access token.
-        </p>
-      </div>
+        </Text>
+      </Stack>
     );
   }
 
   if (!canRecordsRead) {
     return (
-      <div className="page-shell">
-        <p role="alert" className="text-error">
+      <Stack className="page-shell">
+        <Text role="alert" c="red" size="sm">
           Missing <code>entity_builder:records:read</code> permission.
-        </p>
-      </div>
+        </Text>
+      </Stack>
     );
   }
 
   return (
-    <div className="page-shell">
-      <nav className="breadcrumb">
-        <Link to="/home">Home</Link>
-        <span aria-hidden> / </span>
-        <span>Activity & audit</span>
-      </nav>
-      <header className="page-header">
-        <div>
-          <h1 className="page-title">Activity & audit</h1>
-          <p className="page-sub">Open a change history for all records of an entity.</p>
-        </div>
-      </header>
+    <Stack gap="lg" className="page-shell">
+      <Group gap="xs" wrap="wrap">
+        <Anchor component={Link} to="/home" size="sm">
+          Home
+        </Anchor>
+        <Text span c="dimmed" aria-hidden>
+          /
+        </Text>
+        <Text span size="sm">
+          Activity & audit
+        </Text>
+      </Group>
+      <div>
+        <Title order={1} size="h2" mb="xs">
+          Activity & audit
+        </Title>
+        <Text c="dimmed" size="sm">
+          Open a change history for all records of an entity.
+        </Text>
+      </div>
       {error && (
-        <p role="alert" className="text-error">
+        <Text role="alert" c="red" size="sm">
           {error}
-        </p>
+        </Text>
       )}
-      {loading && <p className="builder-muted">Loading entities…</p>}
+      {loading && (
+        <Text size="sm" c="dimmed">
+          Loading entities…
+        </Text>
+      )}
       {!loading && entities && entities.length === 0 && (
-        <p className="builder-muted">No entities yet. Create one under Entities.</p>
+        <Text size="sm" c="dimmed">
+          No entities yet. Create one under Entities.
+        </Text>
       )}
       {!loading && entities && entities.length > 0 && (
         <ul className="entity-list">
@@ -81,20 +96,20 @@ export function AuditHubPage() {
             <li key={e.id} className="entity-list-row">
               <div className="entity-card entity-card-static">
                 <span className="entity-card-name">{e.name}</span>
-                <code className="entity-card-slug">{e.slug}</code>
+                <Code className="entity-card-slug">{e.slug}</Code>
               </div>
               <div className="entity-card-actions">
-                <Link className="btn btn-primary btn-sm" to={`/entities/${e.id}/audit`}>
+                <Button component={Link} to={`/entities/${e.id}/audit`} size="xs">
                   View activity
-                </Link>
-                <Link className="btn btn-secondary btn-sm" to={`/entities/${e.id}/records`}>
+                </Button>
+                <Button component={Link} to={`/entities/${e.id}/records`} variant="default" size="xs">
                   Records
-                </Link>
+                </Button>
               </div>
             </li>
           ))}
         </ul>
       )}
-    </div>
+    </Stack>
   );
 }

@@ -58,6 +58,7 @@ Global CORS allows `http://localhost:*` and `http://127.0.0.1:*` with **credenti
 | `/v1/tenants/*/properties`, `/v1/tenants/*/properties/**` | core-service |
 | `/v1/tenants/*/property-units`, `/v1/tenants/*/property-units/**` | core-service |
 | `/v1/entities`, `/v1/entities/**` | entity-builder |
+| `/v1/entity-status`, `/v1/entity-status/**` | entity-builder (status label i18n) |
 | `/v1/entity-relationships`, `/v1/entity-relationships/**` | entity-builder |
 | `/v1/tenants/*/entities`, `/v1/tenants/*/entities/**` | entity-builder |
 | `/v1/tenants/*/records`, `/v1/tenants/*/records/**` | entity-builder |
@@ -66,6 +67,12 @@ Global CORS allows `http://localhost:*` and `http://127.0.0.1:*` with **credenti
 | `/v1/**` (everything else) | IAM |
 
 JWT validation remains in IAM and entity-builder; the gateway forwards headers (including `Authorization`) as-is.
+
+## Locale / i18n headers
+
+The portal sends `Accept-Language` and **`X-User-Locale`** (explicit override) on API calls. Spring Cloud Gateway forwards incoming request headers to upstream routes by default; custom filters here do **not** strip these. No gateway-side locale negotiation is applied—downstream services interpret headers.
+
+**Resolution order** (application convention): `X-User-Locale` (if present) → future user/tenant preference from IAM → `Accept-Language` → fallback `en`.
 
 ## vs Kong
 

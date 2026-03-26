@@ -13,6 +13,7 @@ export const PORTAL_NAV_CATEGORY_KEYS = [
   'hr',
   'security',
   'lending',
+  'master_data',
 ] as const;
 
 export function formatCategoryKeyLabel(key: string): string {

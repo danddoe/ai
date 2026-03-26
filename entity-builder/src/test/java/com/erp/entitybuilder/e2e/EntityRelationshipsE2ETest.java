@@ -64,6 +64,7 @@ class EntityRelationshipsE2ETest extends AbstractEntityBuilderE2ETest {
         String relationshipId = String.valueOf(createResp.getBody().get("id"));
         assertThat(createResp.getBody().get("slug")).isEqualTo("order-customer");
         assertThat(createResp.getBody().get("cardinality")).isEqualTo("one-to-many");
+        assertThat(createResp.getBody().get("definitionScope")).isEqualTo("TENANT_OBJECT");
 
         // List relationships
         ResponseEntity<List> listResp = restTemplate.exchange(

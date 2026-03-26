@@ -18,6 +18,7 @@ export type EntityDto = {
   slug: string;
   description: string | null;
   categoryKey: string | null;
+  definitionScope?: 'STANDARD_OBJECT' | 'TENANT_OBJECT';
 };
 
 export type RecordDto = {

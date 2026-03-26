@@ -9,19 +9,25 @@ import {
 } from 'react';
 import {
   apiBaseUrl,
+  localeRequestHeaders,
+  publishAccessTokenToOtherTabs,
+  refreshAccessToken,
   setAccessToken as setMemToken,
   setOnAccessTokenRefreshed,
   setOnSessionInvalidated,
 } from '../api/client';
+import { applyPreferredLocaleFromServer } from '../i18n/apiLocale';
 import { clearPortalNavigationCache } from '../hooks/usePortalNavigation';
 import { clearLegacyStoredTokens } from './tokenStorage';
 import { fetchPortalBootstrap, type PortalBootstrapPayload } from '../api/portalBootstrap';
 import {
   canCreatePortalNavItem,
   canManageGlobalNavigation,
+  canPlatformSchemaWrite,
   canPiiRead,
   canRecordsRead,
   canRecordsWrite,
+  canRunSampleTenantSeed,
   canSchemaRead,
   canSchemaWrite,
   parseJwtPermissions,
@@ -40,6 +46,8 @@ type AuthContextValue = {
   /** IAM JWT `permissions` claim; UI hints only. */
   permissions: string[];
   canSchemaWrite: boolean;
+  /** Full platform schema write (catalog sync, DDL apply, editing catalog entities). */
+  canPlatformSchemaWrite: boolean;
   canSchemaRead: boolean;
   canRecordsRead: boolean;
   canRecordsWrite: boolean;
@@ -48,6 +56,8 @@ type AuthContextValue = {
   canCreatePortalNavItem: boolean;
   /** Global nav admin (IAM). */
   canManageGlobalNavigation: boolean;
+  /** Dev: seed sample tenant via IAM APIs (requires tenants/security/superadmin IAM permission). */
+  canRunSampleTenantSeed: boolean;
   /**
    * Resolved from `GET /v1/portal/bootstrap` (custom hostname / CNAME). Empty strings when unknown.
    * Approach A: UX defaults only; authorization remains JWT tenant + permissions.
@@ -121,18 +131,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`${apiBaseUrl()}/auth/refresh`, {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: '{}',
-        });
+        const result = await refreshAccessToken();
         if (cancelled) return;
-        if (res.ok) {
-          const data = (await res.json()) as { accessToken?: string };
-          if (data.accessToken) {
-            setBoth(data.accessToken);
-          }
+        if (result.kind === 'ok') {
+          setBoth(result.accessToken);
         }
       } catch {
         /* offline or CORS — leave logged out */
@@ -150,18 +152,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const res = await fetch(`${apiBaseUrl()}/auth/login`, {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...localeRequestHeaders() },
         body: JSON.stringify({ tenantSlugOrId, email, password }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error((err as { error?: string }).error || `Login failed (${res.status})`);
       }
-      const data = (await res.json()) as { accessToken: string };
+      const data = (await res.json()) as { accessToken: string; preferredLocale?: string | null };
       if (!data.accessToken) {
         throw new Error('No access token in response');
       }
+      applyPreferredLocaleFromServer(data.preferredLocale);
       setBoth(data.accessToken);
+      publishAccessTokenToOtherTabs(data.accessToken, data.preferredLocale);
     },
     [setBoth]
   );
@@ -170,7 +174,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await fetch(`${apiBaseUrl()}/auth/logout`, {
       method: 'POST',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...localeRequestHeaders() },
       body: '{}',
     });
     clearLegacyStoredTokens();
@@ -181,12 +185,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const permissions = useMemo(() => parseJwtPermissions(accessToken), [accessToken]);
   const tenantId = useMemo(() => parseJwtTenantId(accessToken), [accessToken]);
   const schemaWrite = useMemo(() => canSchemaWrite(permissions), [permissions]);
+  const platformSchemaWrite = useMemo(() => canPlatformSchemaWrite(permissions), [permissions]);
   const schemaRead = useMemo(() => canSchemaRead(permissions), [permissions]);
   const recordsRead = useMemo(() => canRecordsRead(permissions), [permissions]);
   const recordsWrite = useMemo(() => canRecordsWrite(permissions), [permissions]);
   const piiRead = useMemo(() => canPiiRead(permissions), [permissions]);
   const portalNavCreate = useMemo(() => canCreatePortalNavItem(permissions), [permissions]);
   const globalNavAdmin = useMemo(() => canManageGlobalNavigation(permissions), [permissions]);
+  const sampleSeed = useMemo(() => canRunSampleTenantSeed(permissions), [permissions]);
 
   const value = useMemo(
     () => ({
@@ -195,12 +201,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       tenantId,
       permissions,
       canSchemaWrite: schemaWrite,
+      canPlatformSchemaWrite: platformSchemaWrite,
       canSchemaRead: schemaRead,
       canRecordsRead: recordsRead,
       canRecordsWrite: recordsWrite,
       canPiiRead: piiRead,
       canCreatePortalNavItem: portalNavCreate,
       canManageGlobalNavigation: globalNavAdmin,
+      canRunSampleTenantSeed: sampleSeed,
       portalBootstrap,
       portalBootstrapLoaded,
       login,
@@ -212,12 +220,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       tenantId,
       permissions,
       schemaWrite,
+      platformSchemaWrite,
       schemaRead,
       recordsRead,
       recordsWrite,
       piiRead,
       portalNavCreate,
       globalNavAdmin,
+      sampleSeed,
       portalBootstrap,
       portalBootstrapLoaded,
       login,

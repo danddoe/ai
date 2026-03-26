@@ -49,7 +49,8 @@ public class AuthController {
         TokenResponse response = new TokenResponse(
                 result.getAccessToken(),
                 refreshForJson,
-                result.getExpiresInSeconds()
+                result.getExpiresInSeconds(),
+                result.getPreferredLocale()
         );
         ResponseEntity.BodyBuilder builder = ResponseEntity.ok();
         if (authCookieProperties.isRefreshTokenInCookie()) {
@@ -75,7 +76,8 @@ public class AuthController {
         TokenResponse response = new TokenResponse(
                 result.getAccessToken(),
                 refreshForJson,
-                result.getExpiresInSeconds()
+                result.getExpiresInSeconds(),
+                result.getPreferredLocale()
         );
         ResponseEntity.BodyBuilder builder = ResponseEntity.ok();
         if (authCookieProperties.isRefreshTokenInCookie()) {

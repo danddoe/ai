@@ -31,8 +31,18 @@ public class EntityRecord {
     @Column(name = "created_by")
     private UUID createdBy;
 
+    @Column(name = "updated_by")
+    private UUID updatedBy;
+
     @Column(nullable = false, length = 50)
     private String status = "ACTIVE";
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "record_scope", nullable = false, length = 32)
+    private RecordScope recordScope = RecordScope.TENANT_RECORD;
+
+    @Column(name = "entity_status_id")
+    private UUID entityStatusId;
 
     /** Lowercased, space-separated concatenation of searchable field values (see field {@code config.isSearchable}). */
     @Column(name = "search_vector", nullable = false, length = 8192)
@@ -74,8 +84,17 @@ public class EntityRecord {
     public UUID getCreatedBy() { return createdBy; }
     public void setCreatedBy(UUID createdBy) { this.createdBy = createdBy; }
 
+    public UUID getUpdatedBy() { return updatedBy; }
+    public void setUpdatedBy(UUID updatedBy) { this.updatedBy = updatedBy; }
+
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+
+    public RecordScope getRecordScope() { return recordScope; }
+    public void setRecordScope(RecordScope recordScope) { this.recordScope = recordScope; }
+
+    public UUID getEntityStatusId() { return entityStatusId; }
+    public void setEntityStatusId(UUID entityStatusId) { this.entityStatusId = entityStatusId; }
 
     public String getSearchVector() { return searchVector; }
     public void setSearchVector(String searchVector) { this.searchVector = searchVector != null ? searchVector : ""; }

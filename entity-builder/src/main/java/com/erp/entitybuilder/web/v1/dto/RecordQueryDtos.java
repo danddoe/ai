@@ -19,6 +19,8 @@ public class RecordQueryDtos {
     public static class RecordQueryRequest {
         @Valid
         private FilterNode filter;
+        @Valid
+        private RecordSort sort;
         @Min(1)
         private int page = 1;
         @Min(1)
@@ -31,6 +33,14 @@ public class RecordQueryDtos {
 
         public void setFilter(FilterNode filter) {
             this.filter = filter;
+        }
+
+        public RecordSort getSort() {
+            return sort;
+        }
+
+        public void setSort(RecordSort sort) {
+            this.sort = sort;
         }
 
         public int getPage() {
@@ -47,6 +57,31 @@ public class RecordQueryDtos {
 
         public void setPageSize(int pageSize) {
             this.pageSize = pageSize;
+        }
+    }
+
+    /**
+     * Sort by {@code entity_records} columns. Allowed {@code field} values: {@code record.updated_at} (default),
+     * {@code record.created_at}. {@code direction}: {@code asc} or {@code desc} (default).
+     */
+    public static class RecordSort {
+        private String field;
+        private String direction = "desc";
+
+        public String getField() {
+            return field;
+        }
+
+        public void setField(String field) {
+            this.field = field;
+        }
+
+        public String getDirection() {
+            return direction;
+        }
+
+        public void setDirection(String direction) {
+            this.direction = direction;
         }
     }
 

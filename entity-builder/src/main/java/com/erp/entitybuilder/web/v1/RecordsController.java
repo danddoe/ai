@@ -62,10 +62,13 @@ public class RecordsController {
             @PathVariable UUID tenantId,
             @PathVariable UUID entityId,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "50") int pageSize
+            @RequestParam(defaultValue = "50") int pageSize,
+            @RequestParam(required = false) UUID assignedForEntityId,
+            @RequestParam(required = false) UUID assignedForEntityFieldId
     ) {
         boolean piiReadPermission = SecurityUtil.hasAuthority("entity_builder:pii:read");
-        var pr = recordsService.listRecords(tenantId, entityId, page, pageSize, piiReadPermission);
+        var pr = recordsService.listRecords(
+                tenantId, entityId, page, pageSize, piiReadPermission, assignedForEntityId, assignedForEntityFieldId);
         return new PageResponse<>(pr.items(), pr.page(), pr.pageSize(), pr.total());
     }
 
@@ -91,10 +94,13 @@ public class RecordsController {
             @PathVariable UUID entityId,
             @RequestParam String term,
             @RequestParam(defaultValue = "20") int limit,
-            @RequestParam(required = false) List<String> displaySlugs
+            @RequestParam(required = false) List<String> displaySlugs,
+            @RequestParam(required = false) UUID assignedForEntityId,
+            @RequestParam(required = false) UUID assignedForEntityFieldId
     ) {
         boolean piiReadPermission = SecurityUtil.hasAuthority("entity_builder:pii:read");
-        return recordsService.lookupRecords(tenantId, entityId, term, limit, displaySlugs, piiReadPermission);
+        return recordsService.lookupRecords(
+                tenantId, entityId, term, limit, displaySlugs, piiReadPermission, assignedForEntityId, assignedForEntityFieldId);
     }
 
     @GetMapping("/by-external-id/{externalId}")

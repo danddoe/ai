@@ -1,5 +1,6 @@
 package com.erp.entitybuilder.service;
 
+import com.erp.entitybuilder.domain.DefinitionScope;
 import com.erp.entitybuilder.domain.EntityRelationship;
 import com.erp.entitybuilder.repository.EntityRelationshipRepository;
 import com.erp.entitybuilder.web.ApiException;
@@ -7,7 +8,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -25,6 +25,13 @@ public class RelationshipSchemaService {
     @Transactional
     public EntityRelationship create(UUID tenantId, String name, String slug, String cardinality,
                                        UUID fromEntityId, UUID toEntityId, String fromFieldSlug, String toFieldSlug) {
+        return create(tenantId, name, slug, cardinality, fromEntityId, toEntityId, fromFieldSlug, toFieldSlug, DefinitionScope.TENANT_OBJECT);
+    }
+
+    @Transactional
+    public EntityRelationship create(UUID tenantId, String name, String slug, String cardinality,
+                                     UUID fromEntityId, UUID toEntityId, String fromFieldSlug, String toFieldSlug,
+                                     DefinitionScope definitionScope) {
         if (relationshipRepository.findByTenantIdAndSlug(tenantId, slug).isPresent()) {
             throw new ApiException(HttpStatus.CONFLICT, "conflict", "Relationship slug already exists", Map.of("slug", slug));
         }
@@ -37,6 +44,7 @@ public class RelationshipSchemaService {
         r.setToEntityId(toEntityId);
         r.setFromFieldSlug(fromFieldSlug);
         r.setToFieldSlug(toFieldSlug);
+        r.setDefinitionScope(definitionScope != null ? definitionScope : DefinitionScope.TENANT_OBJECT);
         return relationshipRepository.save(r);
     }
 

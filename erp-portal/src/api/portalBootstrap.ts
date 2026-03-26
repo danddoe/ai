@@ -1,4 +1,4 @@
-import { apiBaseUrl } from './client';
+import { apiBaseUrl, localeRequestHeaders } from './client';
 
 export type PortalBindingScope = 'TENANT' | 'COMPANY' | 'BUSINESS_UNIT';
 
@@ -20,6 +20,7 @@ export async function fetchPortalBootstrap(hostnameOverride?: string): Promise<P
       : '';
   const res = await fetch(`${apiBaseUrl()}/v1/portal/bootstrap${q}`, {
     credentials: 'include',
+    headers: { ...localeRequestHeaders() },
   });
   if (!res.ok) {
     return null;

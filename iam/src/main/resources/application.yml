@@ -46,6 +46,9 @@ app:
     admin-password: ${SEED_SUPERADMIN_PASSWORD:}
     admin-display-name: Super Admin
     admin-role-name: SUPERADMIN
+    system-builder-email: superai@unknownerp.com
+    system-builder-display-name: Super AI
+    system-builder-password: ${SEED_SUPERAI_PASSWORD:}
   auth:
     # Browser SPAs: refresh JWT in httpOnly cookie; JSON omits refreshToken. IAM E2E passes --app.auth.refresh-token-in-cookie=false.
     refresh-token-in-cookie: ${AUTH_REFRESH_TOKEN_IN_COOKIE:true}

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Button, Group, Select, Text, TextInput, UnstyledButton } from '@mantine/core';
 import type { EntityFieldDto } from '../../api/schemas';
 import { useAuth } from '../../auth/AuthProvider';
 import type { LayoutV2 } from '../../types/formLayout';
@@ -43,6 +44,8 @@ type Props = {
   onPickField: (field: EntityFieldDto) => void;
   onOpenCreateField: () => void;
   onOpenEditField: (field: EntityFieldDto) => void;
+  /** When set, controls create/edit field actions (e.g. false for catalog entities without platform schema write). */
+  fieldDefinitionsWritable?: boolean;
 };
 
 export function FieldsPanel({
@@ -57,8 +60,10 @@ export function FieldsPanel({
   onPickField,
   onOpenCreateField,
   onOpenEditField,
+  fieldDefinitionsWritable,
 }: Props) {
   const { canSchemaWrite } = useAuth();
+  const canMutateFields = fieldDefinitionsWritable ?? canSchemaWrite;
   const [sortBy, setSortBy] = useState<FieldsListSortBy>(readStoredSortBy);
   const q = search.trim().toLowerCase();
   const filtered = useMemo(() => {
@@ -76,59 +81,73 @@ export function FieldsPanel({
     <aside className="builder-panel">
       <div className="builder-panel-header">
         <h2>Data dictionary</h2>
-        {canSchemaWrite && (
-          <button type="button" className="btn btn-sm btn-secondary" onClick={onOpenCreateField}>
+        {canMutateFields && (
+          <Button variant="default" size="xs" onClick={onOpenCreateField}>
             + New field
-          </button>
+          </Button>
         )}
       </div>
       {addTarget && (
         <div className="builder-hint" role="status">
           Choose a field to place in the selected column (or use <strong>+ Save</strong> / <strong>+ Cancel</strong> /{' '}
           <strong>+ Link</strong> in structure), or{' '}
-          <button type="button" className="link-btn" onClick={onClearAddTarget}>
+          <UnstyledButton type="button" c="blue" td="underline" fz="inherit" onClick={onClearAddTarget}>
             cancel
-          </button>
+          </UnstyledButton>
           .
         </div>
       )}
-      <input
-        className="input builder-search"
+      <TextInput
+        className="builder-search"
         placeholder="Search fields…"
         value={search}
         onChange={(e) => onSearchChange(e.target.value)}
         aria-label="Search fields"
+        size="xs"
       />
-      <div className="builder-filter-row">
-        <span className="builder-filter-label">Show</span>
-        <select className="input input-sm" value={filter} onChange={(e) => onFilterChange(e.target.value as 'all' | 'on' | 'off')}>
-          <option value="all">All</option>
-          <option value="on">On form</option>
-          <option value="off">Not on form</option>
-        </select>
-      </div>
-      <div className="builder-filter-row">
-        <span className="builder-filter-label">Sort by</span>
-        <select
-          className="input input-sm"
+      <Group wrap="nowrap" gap="xs" align="center" className="builder-filter-row">
+        <Text span size="xs" c="dimmed" className="builder-filter-label">
+          Show
+        </Text>
+        <Select
+          size="xs"
+          w={130}
+          data={[
+            { value: 'all', label: 'All' },
+            { value: 'on', label: 'On form' },
+            { value: 'off', label: 'Not on form' },
+          ]}
+          value={filter}
+          onChange={(v) => v && onFilterChange(v as 'all' | 'on' | 'off')}
+        />
+      </Group>
+      <Group wrap="nowrap" gap="xs" align="center" className="builder-filter-row">
+        <Text span size="xs" c="dimmed" className="builder-filter-label">
+          Sort by
+        </Text>
+        <Select
+          size="xs"
+          w={150}
+          aria-label="Sort fields list"
+          data={[
+            { value: 'name', label: 'Name (A–Z)' },
+            { value: 'slug', label: 'Slug (A–Z)' },
+            { value: 'schema', label: 'Schema order' },
+          ]}
           value={sortBy}
-          onChange={(e) => {
-            const v = e.target.value as FieldsListSortBy;
-            setSortBy(v);
+          onChange={(v) => {
+            if (!v) return;
+            const next = v as FieldsListSortBy;
+            setSortBy(next);
             try {
-              localStorage.setItem(FIELDS_LIST_SORT_KEY, v);
+              localStorage.setItem(FIELDS_LIST_SORT_KEY, next);
             } catch {
               /* ignore */
             }
           }}
-          aria-label="Sort fields list"
-        >
-          <option value="name">Name (A–Z)</option>
-          <option value="slug">Slug (A–Z)</option>
-          <option value="schema">Schema order</option>
-        </select>
-      </div>
-      {fields.length === 0 && canSchemaWrite && (
+        />
+      </Group>
+      {fields.length === 0 && canMutateFields && (
         <p className="builder-muted" style={{ marginBottom: 8, fontSize: '0.875rem' }}>
           No schema fields yet. Use <strong>New field</strong> to add one, or create a field from an unresolved
           placement in the structure (select the placement, then Properties).
@@ -153,15 +172,16 @@ export function FieldsPanel({
                     <span className={`pill ${on ? 'pill-on' : 'pill-off'}`}>{on ? 'on form' : 'off'}</span>
                   </span>
                 </button>
-                {canSchemaWrite && (
-                  <button
+                {canMutateFields && (
+                  <Button
                     type="button"
-                    className="btn btn-sm btn-secondary"
+                    variant="default"
+                    size="xs"
                     onClick={() => onOpenEditField(f)}
                     aria-label={`Edit field ${f.name}`}
                   >
                     Edit
-                  </button>
+                  </Button>
                 )}
               </div>
             </li>

@@ -32,71 +32,9 @@ input {
 }
 
 /* —— Shared UI —— */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 0.5rem 0.85rem;
-  border-radius: 8px;
-  border: 1px solid #d4d4d8;
-  background: #fff;
-  font-weight: 500;
-  font-size: 0.875rem;
-}
-
-.btn:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.btn-sm {
-  padding: 0.35rem 0.6rem;
-  font-size: 0.8125rem;
-}
-
-.btn-xs {
-  padding: 0.2rem 0.45rem;
-  font-size: 0.75rem;
-}
-
-.btn-primary {
-  background: #18181b;
-  border-color: #18181b;
-  color: #fff;
-}
-
-.btn-secondary {
-  background: #fff;
-  color: #27272a;
-}
-
-.btn-ghost {
-  border: none;
-  background: transparent;
-  font-size: 1.25rem;
-  line-height: 1;
-  padding: 0.25rem 0.5rem;
-}
-
-.btn-danger {
-  background: #fef2f2;
-  border-color: #fecaca;
-  color: #b91c1c;
-}
-
-.input {
-  width: 100%;
-  padding: 0.45rem 0.55rem;
-  border-radius: 6px;
-  border: 1px solid #d4d4d8;
-  background: #fff;
-}
-
-.input.input-state-error,
-.form-input.input-state-error {
-  border-color: #dc2626;
-  box-shadow: 0 0 0 1px rgba(220, 38, 38, 0.15);
+.input-inline {
+  flex: 1;
+  min-width: 120px;
 }
 
 .runtime-field-error {
@@ -104,36 +42,6 @@ input {
   font-size: 0.8125rem;
   line-height: 1.35;
   color: #b91c1c;
-}
-
-.input-sm {
-  padding: 0.3rem 0.45rem;
-  font-size: 0.8125rem;
-}
-
-.input-xs {
-  width: 3.25rem;
-  padding: 0.2rem 0.35rem;
-  font-size: 0.75rem;
-}
-
-.input-inline {
-  flex: 1;
-  min-width: 120px;
-}
-
-.field-label {
-  display: grid;
-  gap: 0.35rem;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: #3f3f46;
-}
-
-.field-label.row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
 }
 
 .text-error {
@@ -149,16 +57,6 @@ input {
 .focusable:focus-visible {
   outline: 2px solid #2563eb;
   outline-offset: 2px;
-}
-
-.link-btn {
-  border: none;
-  background: none;
-  padding: 0;
-  color: #2563eb;
-  text-decoration: underline;
-  cursor: pointer;
-  font: inherit;
 }
 
 /* —— List pages —— */
@@ -277,26 +175,6 @@ a.entity-card-name:hover {
   align-items: center;
   gap: 12px;
   margin-bottom: 14px;
-}
-
-.entity-list-search-label {
-  flex: 1;
-  min-width: min(100%, 240px);
-  max-width: 480px;
-  margin-bottom: 0;
-  gap: 0.5rem;
-}
-
-.entity-list-search-input {
-  flex: 1;
-  min-width: 0;
-  width: auto;
-  margin-top: 0;
-}
-
-.entity-list-search-status {
-  font-size: 0.8125rem;
-  flex-shrink: 0;
 }
 
 .entity-card-slug {
@@ -832,6 +710,19 @@ a.entity-card-name:hover {
   flex: 1;
 }
 
+.nav-wip-pill {
+  margin-left: 6px;
+  padding: 1px 6px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: 4px;
+  background: #fef3c7;
+  color: #92400e;
+  vertical-align: middle;
+}
+
 .nav-tree-icon,
 .portal-nav-icon {
   display: inline-flex;
@@ -892,39 +783,6 @@ a.entity-card-name:hover {
   width: 100%;
 }
 
-.global-search-trigger {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 0.4rem 0.65rem;
-  border-radius: 8px;
-  border: 1px solid #e4e4e7;
-  background: #fafafa;
-  font-size: 0.875rem;
-  color: #71717a;
-}
-
-.global-search-trigger:hover {
-  border-color: #d4d4d8;
-  background: #fff;
-}
-
-.global-search-placeholder {
-  flex: 1;
-  text-align: left;
-}
-
-.global-search-kbd {
-  font-size: 0.65rem;
-  padding: 0.15rem 0.35rem;
-  border-radius: 4px;
-  border: 1px solid #e4e4e7;
-  background: #fff;
-  color: #71717a;
-}
-
 .global-search-panel {
   position: absolute;
   top: calc(100% + 6px);
@@ -937,14 +795,6 @@ a.entity-card-name:hover {
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.12);
   padding: 10px;
   z-index: 200;
-}
-
-.global-search-input {
-  width: 100%;
-  padding: 0.5rem 0.6rem;
-  border-radius: 6px;
-  border: 1px solid #d4d4d8;
-  margin-bottom: 8px;
 }
 
 .global-search-results {
@@ -996,11 +846,6 @@ a.entity-card-name:hover {
 .global-search-hint {
   font-size: 0.75rem;
   margin: 0 0 6px;
-}
-
-.global-search-close {
-  margin-top: 8px;
-  font-size: 0.8125rem;
 }
 
 .global-search-panel [cmdk-root] {
@@ -1080,42 +925,6 @@ a.entity-card-name:hover {
   font-size: 0.875rem;
 }
 
-/* —— Record runtime (list + form) —— */
-.records-page-actions {
-  flex-shrink: 0;
-}
-
-.records-page-actions > .btn {
-  flex-shrink: 0;
-  white-space: nowrap;
-}
-
-.records-table-wrap {
-  overflow-x: auto;
-  background: #fff;
-  border: 1px solid #e4e4e7;
-  border-radius: 10px;
-}
-
-.records-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.875rem;
-}
-
-.records-table th,
-.records-table td {
-  text-align: left;
-  padding: 10px 12px;
-  border-bottom: 1px solid #f4f4f5;
-}
-
-.records-table th {
-  font-weight: 600;
-  color: #52525b;
-  background: #fafafa;
-}
-
 /* JSON / audit payload viewer — readable “document” panel */
 .json-doc-lead {
   margin: 0 0 12px;
@@ -1168,13 +977,6 @@ a.entity-card-name:hover {
 
 .json-doc-punct {
   color: #656d76;
-}
-
-.records-pager {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 1rem;
 }
 
 .runtime-layout {

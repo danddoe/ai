@@ -1,22 +1,28 @@
+import { Button, Checkbox, Select, TextInput } from '@mantine/core';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   ApiHttpError,
+  createFormLayout,
   createNavigationItem,
   createRecordListView,
+  getRecordListView,
   listEntities,
   listFields,
   listFormLayouts,
+  listNavigationAdminItems,
   listRecordListViews,
   patchFormLayout,
   type EntityDto,
   type EntityFieldDto,
+  type NavigationAdminItemDto,
   type NavigationItemDto,
   type RecordListViewDto,
 } from '../api/schemas';
 import { useAuth } from '../auth/AuthProvider';
 import { clearPortalNavigationCache, usePortalNavigation } from '../hooks/usePortalNavigation';
 import type { LayoutV2 } from '../types/formLayout';
+import { buildAutoFormLayoutV2, suggestListColumnSlugs } from '../ui/createUiArtifacts';
 import {
   UI_TEMPLATES,
   type UiTemplateId,
@@ -25,7 +31,10 @@ import {
   searchKeywordsForEntity,
 } from '../ui/uiTemplates';
 import { parseLayoutV2 } from '../utils/layoutV2';
-import { buildRecordListViewDefinitionV1 } from '../utils/recordListViewDefinition';
+import {
+  buildRecordListViewDefinitionV1,
+  parseRecordListViewDefinition,
+} from '../utils/recordListViewDefinition';
 import { recordsListPath } from '../utils/recordsListNav';
 
 function collectSectionParents(items: NavigationItemDto[]): { id: string; label: string }[] {
@@ -39,6 +48,36 @@ function collectSectionParents(items: NavigationItemDto[]): { id: string; label:
     }
   }
   walk(items, 0);
+  return acc;
+}
+
+/**
+ * Sections for parent picker when user can call {@link listNavigationAdminItems}. Uses the full nav tree so
+ * sections are not dropped when all children are hidden by permission (see IAM {@code toDto} empty-section rule).
+ */
+function collectSectionParentsFromAdminList(items: NavigationAdminItemDto[]): { id: string; label: string }[] {
+  const active = items.filter((i) => i.active);
+  const childrenByParent = new Map<string | null, NavigationAdminItemDto[]>();
+  for (const i of active) {
+    const p = i.parentId;
+    const list = childrenByParent.get(p) ?? [];
+    list.push(i);
+    childrenByParent.set(p, list);
+  }
+  for (const list of childrenByParent.values()) {
+    list.sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id));
+  }
+  const acc: { id: string; label: string }[] = [];
+  function walk(parentId: string | null, depth: number) {
+    const kids = childrenByParent.get(parentId) ?? [];
+    for (const n of kids) {
+      if (n.type === 'section') {
+        acc.push({ id: n.id, label: `${'\u00A0\u00A0'.repeat(depth)}${n.label}` });
+      }
+      walk(n.id, depth + 1);
+    }
+  }
+  walk(null, 0);
   return acc;
 }
 
@@ -107,12 +146,37 @@ export function CreateUiWizardPage() {
   const [newListViewName, setNewListViewName] = useState('');
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const listColSeedEntityRef = useRef<string | null>(null);
 
   const colStep = columnStepEnabled(template);
   const navStepNum = colStep ? 4 : 3;
   const reviewStepNum = colStep ? 5 : 4;
 
-  const sectionParents = useMemo(() => collectSectionParents(navRoots), [navRoots]);
+  /** When set (including []), parent-section options come from admin list; otherwise from visible nav tree. */
+  const [adminSectionParents, setAdminSectionParents] = useState<{ id: string; label: string }[] | undefined>(undefined);
+
+  useEffect(() => {
+    if (!canCreatePortalNavItem) {
+      setAdminSectionParents(undefined);
+      return;
+    }
+    let cancelled = false;
+    void listNavigationAdminItems()
+      .then((r) => {
+        if (!cancelled) setAdminSectionParents(collectSectionParentsFromAdminList(r.items));
+      })
+      .catch(() => {
+        if (!cancelled) setAdminSectionParents(undefined);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canCreatePortalNavItem]);
+
+  const sectionParents = useMemo(() => {
+    if (adminSectionParents !== undefined) return adminSectionParents;
+    return collectSectionParents(navRoots);
+  }, [adminSectionParents, navRoots]);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -174,6 +238,7 @@ export function CreateUiWizardPage() {
     setSavedViewId('');
     setNewListViewName('');
     setSavedViews(null);
+    listColSeedEntityRef.current = null;
   }, [entityId]);
 
   useEffect(() => {
@@ -224,6 +289,13 @@ export function CreateUiWizardPage() {
     };
   }, [step, colStep, entityId, canSchemaWrite]);
 
+  useEffect(() => {
+    if (!canSchemaWrite || !entityId || !listFieldsState?.length || step !== 3 || !colStep) return;
+    if (listColSeedEntityRef.current === entityId) return;
+    listColSeedEntityRef.current = entityId;
+    setSelectedColSlugs(suggestListColumnSlugs(listFieldsState));
+  }, [canSchemaWrite, entityId, listFieldsState, step, colStep]);
+
   const previewPath = useMemo(() => {
     if (!entityId) return '';
     if (!colStep) return routePathForTemplate(template, entityId);
@@ -264,57 +336,229 @@ export function CreateUiWizardPage() {
     setInlineColSlugs((prev) => (prev.includes(slug) ? prev.filter((s) => s !== slug) : [...prev, slug]));
   }
 
+  async function createListViewWipUnique(entityIdParam: string, baseName: string, definition: Record<string, unknown>) {
+    let name = baseName.slice(0, 255);
+    for (let i = 0; i < 5; i++) {
+      try {
+        return await createRecordListView(entityIdParam, {
+          name,
+          definition,
+          isDefault: false,
+          status: 'WIP',
+        });
+      } catch (e) {
+        if (e instanceof ApiHttpError && e.status === 409 && i < 4) {
+          name = `${baseName.slice(0, 220)} (${i + 2})`.slice(0, 255);
+          continue;
+        }
+        throw e;
+      }
+    }
+    throw new Error('Could not allocate a unique list view name');
+  }
+
+  async function createFormLayoutWipUnique(
+    entityIdParam: string,
+    baseName: string,
+    layout: LayoutV2,
+    isDefault: boolean
+  ) {
+    let name = baseName.slice(0, 255);
+    for (let i = 0; i < 5; i++) {
+      try {
+        return await createFormLayout(entityIdParam, {
+          name,
+          layout,
+          isDefault,
+          status: 'WIP',
+        });
+      } catch (e) {
+        if (e instanceof ApiHttpError && e.status === 409 && i < 4) {
+          name = `${baseName.slice(0, 220)} (${i + 2})`.slice(0, 255);
+          continue;
+        }
+        throw e;
+      }
+    }
+    throw new Error('Could not allocate a unique form layout name');
+  }
+
+  async function submitLegacy() {
+    if (!entityId || !label.trim() || !previewPath) return;
+    if (template === 'multi_step') {
+      await applyMultiStepWizard(entityId);
+    }
+    let routePath = previewPath;
+    if (colStep && listMode === 'create_saved') {
+      const name = newListViewName.trim();
+      if (!name) throw new Error('Enter a name for the new list view.');
+      if (selectedColSlugs.length === 0) throw new Error('Pick at least one column for the new list view.');
+      const def = buildRecordListViewDefinitionV1(
+        selectedColSlugs.map((slug, i) => ({
+          fieldSlug: slug,
+          order: i,
+          inlineEditable: inlineColSlugs.includes(slug),
+          visible: true,
+        })),
+        showRowActions
+      );
+      const created = await createRecordListView(entityId, {
+        name,
+        definition: def as unknown as Record<string, unknown>,
+        isDefault: false,
+      });
+      routePath = recordsListPath(entityId, {
+        viewId: created.id,
+        cols: [],
+        inlineSlugs: [],
+        showRowActions: true,
+      });
+    }
+    await createNavigationItem({
+      parentId: parentId || null,
+      sortOrder: 50,
+      routePath,
+      label: label.trim(),
+      description: description.trim() || null,
+      type: 'internal',
+      icon: 'layout-list',
+      categoryKey: 'entity_builder',
+      searchKeywords: searchKeywordsForEntity(selectedEntity?.name ?? '', selectedEntity?.slug ?? ''),
+      requiredPermissions: previewPerms,
+      requiredRoles: [],
+      scope: globalScope && canManageGlobalNavigation ? 'GLOBAL' : 'TENANT',
+    });
+    clearPortalNavigationCache();
+    await loadNav();
+    navigate(routePath);
+  }
+
+  async function submitWithWipDesigners() {
+    if (!entityId || !label.trim()) return;
+
+    const fields = await listFields(entityId);
+    const layouts = await listFormLayouts(entityId);
+    const hasDefaultLayout = layouts.some((l) => l.isDefault);
+    const setDefaultForm = !hasDefaultLayout;
+
+    let listViewId: string | null = null;
+    let formLayoutId: string | null = null;
+    let routePath: string;
+
+    if (template === 'form_landing') {
+      if (fields.length === 0) {
+        throw new Error('This entity has no fields. Add fields before creating a form.');
+      }
+      const layout = buildAutoFormLayoutV2(fields, 'single_page');
+      const formDto = await createFormLayoutWipUnique(entityId, `${label.trim()} form`, layout, setDefaultForm);
+      formLayoutId = formDto.id;
+      routePath = routePathForTemplate('form_landing', entityId);
+    } else {
+      let colSlugs: string[] = [];
+      if (listMode === 'saved' && savedViewId.trim()) {
+        const dto = await getRecordListView(entityId, savedViewId.trim());
+        const def = parseRecordListViewDefinition(dto.definition);
+        if (def?.columns?.length) {
+          colSlugs = [...def.columns]
+            .filter((c) => c.visible !== false)
+            .sort((a, b) => a.order - b.order)
+            .map((c) => c.fieldSlug);
+        }
+      }
+      if (colSlugs.length === 0) {
+        colSlugs = selectedColSlugs.length > 0 ? selectedColSlugs : suggestListColumnSlugs(fields);
+      }
+      if (colSlugs.length === 0) {
+        throw new Error('No list columns could be suggested. Add fields or pick columns in step 3.');
+      }
+      const listDef = buildRecordListViewDefinitionV1(
+        colSlugs.map((slug, i) => ({
+          fieldSlug: slug,
+          order: i,
+          inlineEditable: inlineColSlugs.includes(slug),
+          visible: true,
+        })),
+        showRowActions
+      );
+      const listDto = await createListViewWipUnique(
+        entityId,
+        `${label.trim()} list`,
+        listDef as unknown as Record<string, unknown>
+      );
+      listViewId = listDto.id;
+      routePath = recordsListPath(entityId, {
+        viewId: listViewId,
+        cols: [],
+        inlineSlugs: [],
+        showRowActions: true,
+      });
+
+      if (template === 'list_and_form') {
+        if (fields.length === 0) {
+          throw new Error('This entity has no fields. Add fields before creating a form.');
+        }
+        const layout = buildAutoFormLayoutV2(fields, 'single_page');
+        const formDto = await createFormLayoutWipUnique(entityId, `${label.trim()} form`, layout, setDefaultForm);
+        formLayoutId = formDto.id;
+      } else if (template === 'multi_step') {
+        if (fields.length === 0) {
+          throw new Error('This entity has no fields. Add fields before creating a multi-step form.');
+        }
+        const layout = buildAutoFormLayoutV2(fields, 'wizard');
+        const formDto = await createFormLayoutWipUnique(entityId, `${label.trim()} form`, layout, setDefaultForm);
+        formLayoutId = formDto.id;
+      }
+    }
+
+    const { id: navId } = await createNavigationItem({
+      parentId: parentId || null,
+      sortOrder: 50,
+      routePath,
+      label: label.trim(),
+      description: description.trim() || null,
+      type: 'internal',
+      icon: 'layout-list',
+      categoryKey: 'entity_builder',
+      searchKeywords: searchKeywordsForEntity(selectedEntity?.name ?? '', selectedEntity?.slug ?? ''),
+      requiredPermissions: previewPerms,
+      requiredRoles: [],
+      scope: globalScope && canManageGlobalNavigation ? 'GLOBAL' : 'TENANT',
+      designStatus: 'WIP',
+      linkedListViewId: listViewId ?? undefined,
+      linkedFormLayoutId: formLayoutId ?? undefined,
+    });
+    clearPortalNavigationCache();
+    await loadNav();
+
+    if (listViewId) {
+      navigate(`/entities/${entityId}/list-views/${listViewId}`, {
+        state: {
+          linkedNavigationItemId: navId,
+          linkedFormLayoutId: formLayoutId ?? undefined,
+        },
+      });
+    } else if (formLayoutId) {
+      navigate(`/entities/${entityId}/layouts/${formLayoutId}`, {
+        state: {
+          linkedNavigationItemId: navId,
+          linkedListViewId: listViewId ?? undefined,
+        },
+      });
+    } else {
+      navigate(routePath);
+    }
+  }
+
   async function submit() {
     if (!entityId || !label.trim() || !previewPath) return;
     setBusy(true);
     setError(null);
     try {
-      if (template === 'multi_step') {
-        await applyMultiStepWizard(entityId);
+      if (canSchemaWrite) {
+        await submitWithWipDesigners();
+      } else {
+        await submitLegacy();
       }
-      let routePath = previewPath;
-      if (colStep && listMode === 'create_saved') {
-        const name = newListViewName.trim();
-        if (!name) throw new Error('Enter a name for the new list view.');
-        if (selectedColSlugs.length === 0) throw new Error('Pick at least one column for the new list view.');
-        const def = buildRecordListViewDefinitionV1(
-          selectedColSlugs.map((slug, i) => ({
-            fieldSlug: slug,
-            order: i,
-            inlineEditable: inlineColSlugs.includes(slug),
-            visible: true,
-          })),
-          showRowActions
-        );
-        const created = await createRecordListView(entityId, {
-          name,
-          definition: def as unknown as Record<string, unknown>,
-          isDefault: false,
-        });
-        routePath = recordsListPath(entityId, {
-          viewId: created.id,
-          cols: [],
-          inlineSlugs: [],
-          showRowActions: true,
-        });
-      }
-      await createNavigationItem({
-        parentId: parentId || null,
-        sortOrder: 50,
-        routePath,
-        label: label.trim(),
-        description: description.trim() || null,
-        type: 'internal',
-        icon: 'layout-list',
-        categoryKey: 'entity_builder',
-        searchKeywords: searchKeywordsForEntity(selectedEntity?.name ?? '', selectedEntity?.slug ?? ''),
-        requiredPermissions: previewPerms,
-        requiredRoles: [],
-        scope: globalScope && canManageGlobalNavigation ? 'GLOBAL' : 'TENANT',
-      });
-      clearPortalNavigationCache();
-      await loadNav();
-      navigate(routePath);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Create failed');
     } finally {
@@ -394,9 +638,9 @@ export function CreateUiWizardPage() {
               </li>
             ))}
           </ul>
-          <button type="button" className="btn btn-primary" style={{ marginTop: 16 }} onClick={() => setStep(2)}>
+          <Button type="button" mt="md" onClick={() => setStep(2)}>
             Next
-          </button>
+          </Button>
         </section>
       )}
 
@@ -405,12 +649,12 @@ export function CreateUiWizardPage() {
           <h2 className="page-title" style={{ fontSize: '1.1rem' }}>
             Choose entity
           </h2>
-          <input
-            className="input"
+          <TextInput
             placeholder="Search by name, slug, or id…"
             value={entitySearchInput}
             onChange={(e) => setEntitySearchInput(e.target.value)}
-            style={{ maxWidth: 420, marginBottom: 12 }}
+            maw={420}
+            mb="sm"
           />
           {entitiesLoading && <p className="builder-muted">Loading entities…</p>}
           <ul className="entity-list" style={{ maxHeight: 320, overflowY: 'auto' }}>
@@ -447,12 +691,12 @@ export function CreateUiWizardPage() {
             </p>
           )}
           <div style={{ marginTop: 16, display: 'flex', gap: 8 }}>
-            <button type="button" className="btn btn-secondary" onClick={() => setStep(1)}>
+            <Button type="button" variant="default" onClick={() => setStep(1)}>
               Back
-            </button>
-            <button type="button" className="btn btn-primary" disabled={!entityId} onClick={() => setStep(3)}>
+            </Button>
+            <Button type="button" disabled={!entityId} onClick={() => setStep(3)}>
               Next
-            </button>
+            </Button>
           </div>
         </section>
       )}
@@ -510,18 +754,16 @@ export function CreateUiWizardPage() {
                   {savedViewsErr}
                 </p>
               )}
-              <label className="field-label">
-                List view
-                <select className="input" value={savedViewId} onChange={(e) => setSavedViewId(e.target.value)}>
-                  <option value="">— Select —</option>
-                  {(savedViews ?? []).map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.name}
-                      {v.isDefault ? ' (default)' : ''}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <Select
+                label="List view"
+                placeholder="— Select —"
+                value={savedViewId || null}
+                onChange={(v) => setSavedViewId(v ?? '')}
+                data={(savedViews ?? []).map((v) => ({
+                  value: v.id,
+                  label: `${v.name}${v.isDefault ? ' (default)' : ''}`,
+                }))}
+              />
               {savedViews && savedViews.length === 0 && (
                 <p className="builder-muted" style={{ fontSize: '0.875rem' }}>
                   No saved views yet — use “Create new saved view” or the records page designer.
@@ -530,15 +772,14 @@ export function CreateUiWizardPage() {
             </div>
           )}
           {listMode === 'create_saved' && canSchemaWrite && (
-            <label className="field-label" style={{ marginBottom: 16, maxWidth: 420 }}>
-              New view name
-              <input
-                className="input"
-                value={newListViewName}
-                onChange={(e) => setNewListViewName(e.target.value)}
-                placeholder="e.g. Sales pipeline"
-              />
-            </label>
+            <TextInput
+              label="New view name"
+              mb="md"
+              maw={420}
+              value={newListViewName}
+              onChange={(e) => setNewListViewName(e.target.value)}
+              placeholder="e.g. Sales pipeline"
+            />
           )}
           {(listMode === 'legacy' || listMode === 'create_saved' || !canSchemaWrite) && (
             <>
@@ -552,17 +793,19 @@ export function CreateUiWizardPage() {
                   {listFieldsErr}
                 </p>
               )}
-              <input
-                className="input"
+              <TextInput
                 placeholder="Filter fields…"
                 value={fieldSearch}
                 onChange={(e) => setFieldSearch(e.target.value)}
-                style={{ maxWidth: 420, marginBottom: 12 }}
+                maw={420}
+                mb="sm"
               />
-              <label className="field-label row" style={{ marginBottom: 12 }}>
-                <input type="checkbox" checked={showRowActions} onChange={(e) => setShowRowActions(e.target.checked)} />
-                <span>Show row actions (Edit / Delete)</span>
-              </label>
+              <Checkbox
+                mb="sm"
+                checked={showRowActions}
+                onChange={(e) => setShowRowActions(e.currentTarget.checked)}
+                label="Show row actions (Edit / Delete)"
+              />
               <ul className="entity-list" style={{ maxHeight: 280, overflowY: 'auto' }}>
                 {filteredFields.map((f) => (
                   <li key={f.id}>
@@ -596,19 +839,16 @@ export function CreateUiWizardPage() {
             </>
           )}
           <div style={{ marginTop: 16, display: 'flex', gap: 8 }}>
-            <button type="button" className="btn btn-secondary" onClick={() => setStep(2)}>
+            <Button type="button" variant="default" onClick={() => setStep(2)}>
               Back
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
-              className="btn btn-primary"
-              disabled={
-                listMode === 'saved' && canSchemaWrite ? !savedViewId.trim() : false
-              }
+              disabled={listMode === 'saved' && canSchemaWrite ? !savedViewId.trim() : false}
               onClick={() => setStep(4)}
             >
               Next
-            </button>
+            </Button>
           </div>
         </section>
       )}
@@ -619,48 +859,34 @@ export function CreateUiWizardPage() {
             Navigation entry
           </h2>
           <div style={{ display: 'grid', gap: 12, maxWidth: 480 }}>
-            <label className="field-label">
-              Label
-              <input className="input" value={label} onChange={(e) => setLabel(e.target.value)} />
-            </label>
-            <label className="field-label">
-              Description (optional)
-              <input className="input" value={description} onChange={(e) => setDescription(e.target.value)} />
-            </label>
-            <label className="field-label">
-              Parent (section)
-              <select className="input" value={parentId} onChange={(e) => setParentId(e.target.value)}>
-                <option value="">— None —</option>
-                {sectionParents.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <TextInput label="Label" value={label} onChange={(e) => setLabel(e.target.value)} />
+            <TextInput
+              label="Description (optional)"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+            <Select
+              label="Parent (section)"
+              placeholder="— None —"
+              value={parentId || null}
+              onChange={(v) => setParentId(v ?? '')}
+              data={sectionParents.map((p) => ({ value: p.id, label: p.label }))}
+            />
             {canManageGlobalNavigation && (
-              <label className="field-label row">
-                <input
-                  type="checkbox"
-                  checked={globalScope}
-                  onChange={(e) => setGlobalScope(e.target.checked)}
-                />
-                <span>Global navigation (all tenants, subject to permissions)</span>
-              </label>
+              <Checkbox
+                checked={globalScope}
+                onChange={(e) => setGlobalScope(e.currentTarget.checked)}
+                label="Global navigation (all tenants, subject to permissions)"
+              />
             )}
           </div>
           <div style={{ marginTop: 16, display: 'flex', gap: 8 }}>
-            <button type="button" className="btn btn-secondary" onClick={() => setStep(colStep ? 3 : 2)}>
+            <Button type="button" variant="default" onClick={() => setStep(colStep ? 3 : 2)}>
               Back
-            </button>
-            <button
-              type="button"
-              className="btn btn-primary"
-              disabled={!label.trim()}
-              onClick={() => setStep(reviewStepNum)}
-            >
+            </Button>
+            <Button type="button" disabled={!label.trim()} onClick={() => setStep(reviewStepNum)}>
               Next
-            </button>
+            </Button>
           </div>
         </section>
       )}
@@ -696,19 +922,35 @@ export function CreateUiWizardPage() {
             <li>
               <strong>Scope:</strong> {globalScope && canManageGlobalNavigation ? 'GLOBAL' : 'This tenant only'}
             </li>
-            {template === 'multi_step' && (
+            {template === 'multi_step' && !canSchemaWrite && (
               <li>
                 <strong>Layout:</strong> default layout will be patched to wizard mode (region order).
               </li>
             )}
+            {template === 'multi_step' && canSchemaWrite && (
+              <li>
+                <strong>Layout:</strong> a new draft multi-step form layout will be created in the form builder.
+              </li>
+            )}
+            {canSchemaWrite && (
+              <li>
+                <strong>Design:</strong> sidebar link and related screens start as <strong>WIP</strong>; open the list/form
+                designer, then use <strong>Publish</strong> when ready.
+              </li>
+            )}
+            {!canSchemaWrite && (
+              <li className="builder-muted">
+                Without <code>entity_builder:schema:write</code>, a sidebar link opens the live app (no draft designers).
+              </li>
+            )}
           </ul>
           <div style={{ marginTop: 16, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button type="button" className="btn btn-secondary" onClick={() => setStep(navStepNum)} disabled={busy}>
+            <Button type="button" variant="default" onClick={() => setStep(navStepNum)} disabled={busy}>
               Back
-            </button>
-            <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void submit()}>
-              {busy ? 'Creating…' : 'Create & open'}
-            </button>
+            </Button>
+            <Button type="button" disabled={busy} onClick={() => void submit()}>
+              {busy ? 'Creating…' : canSchemaWrite ? 'Create draft & open designer' : 'Create & open'}
+            </Button>
           </div>
         </section>
       )}

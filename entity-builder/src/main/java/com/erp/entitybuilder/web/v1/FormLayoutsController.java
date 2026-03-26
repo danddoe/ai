@@ -35,7 +35,7 @@ public class FormLayoutsController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('entity_builder:schema:write')")
+    @PreAuthorize("@entityBuilderSecurity.canWriteTenantSchema()")
     public FormLayoutDtos.FormLayoutDto create(
             @PathVariable UUID entityId,
             @Valid @RequestBody FormLayoutDtos.CreateFormLayoutRequest req
@@ -48,12 +48,12 @@ public class FormLayoutsController {
             throw new com.erp.entitybuilder.web.ApiException(org.springframework.http.HttpStatus.BAD_REQUEST, "bad_request", "Invalid layout JSON");
         }
 
-        FormLayout l = formLayoutService.create(tenantId, entityId, req.getName(), layoutJson, req.isDefault());
+        FormLayout l = formLayoutService.create(tenantId, entityId, req.getName(), layoutJson, req.isDefault(), req.getStatus());
         return toDto(l);
     }
 
     @PostMapping("/from-template")
-    @PreAuthorize("hasAuthority('entity_builder:schema:write')")
+    @PreAuthorize("@entityBuilderSecurity.canWriteTenantSchema()")
     public FormLayoutDtos.FormLayoutDto createFromTemplate(
             @PathVariable UUID entityId,
             @Valid @RequestBody FormLayoutDtos.CreateFromTemplateRequest req
@@ -78,7 +78,7 @@ public class FormLayoutsController {
     }
 
     @PatchMapping("/{layoutId}")
-    @PreAuthorize("hasAuthority('entity_builder:schema:write')")
+    @PreAuthorize("@entityBuilderSecurity.canWriteTenantSchema()")
     public FormLayoutDtos.FormLayoutDto update(
             @PathVariable UUID entityId,
             @PathVariable UUID layoutId,
@@ -98,7 +98,7 @@ public class FormLayoutsController {
     }
 
     @DeleteMapping("/{layoutId}")
-    @PreAuthorize("hasAuthority('entity_builder:schema:write')")
+    @PreAuthorize("@entityBuilderSecurity.canWriteTenantSchema()")
     @ResponseStatus(org.springframework.http.HttpStatus.NO_CONTENT)
     public void delete(@PathVariable UUID entityId, @PathVariable UUID layoutId) {
         UUID tenantId = SecurityUtil.principal().getTenantId();

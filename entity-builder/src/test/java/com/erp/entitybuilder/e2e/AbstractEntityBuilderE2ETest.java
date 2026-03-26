@@ -25,6 +25,7 @@ import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
@@ -65,17 +66,19 @@ public abstract class AbstractEntityBuilderE2ETest {
             return;
         }
 
+        List<String> args = new ArrayList<>(List.of(
+                "--server.port=0",
+                "--spring.datasource.url=" + testDbJdbcUrl,
+                "--spring.datasource.username=root",
+                "--spring.datasource.password=",
+                "--spring.flyway.enabled=true",
+                "--app.jwt.hmac-secret=" + JWT_SECRET,
+                "--entitybuilder.pii.key=dev-dev-dev-dev-dev-dev-dev-dev-dev-dev-dev-dev-dev"
+        ));
+        args.addAll(extraSpringBootArgs());
         appContext = new SpringApplicationBuilder(com.erp.entitybuilder.EntityBuilderApplication.class)
                 .web(WebApplicationType.SERVLET)
-                .run(
-                        "--server.port=0",
-                        "--spring.datasource.url=" + testDbJdbcUrl,
-                        "--spring.datasource.username=root",
-                        "--spring.datasource.password=",
-                        "--spring.flyway.enabled=true",
-                        "--app.jwt.hmac-secret=" + JWT_SECRET,
-                        "--entitybuilder.pii.key=dev-dev-dev-dev-dev-dev-dev-dev-dev-dev-dev-dev"
-                );
+                .run(args.toArray(new String[0]));
 
         int httpPort = ((WebServerApplicationContext) appContext).getWebServer().getPort();
         baseUrl = "http://localhost:" + httpPort;
@@ -94,6 +97,11 @@ public abstract class AbstractEntityBuilderE2ETest {
         ds.setUsername("root");
         ds.setPassword("");
         jdbcTemplate = new JdbcTemplate(ds);
+    }
+
+    /** Hook for subclasses (e.g. platform tenant id). */
+    protected List<String> extraSpringBootArgs() {
+        return List.of();
     }
 
     @AfterAll

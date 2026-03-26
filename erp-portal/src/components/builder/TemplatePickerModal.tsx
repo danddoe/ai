@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react';
+import { Button, Checkbox, Group, Select, Stack, Text, TextInput } from '@mantine/core';
 import { Modal } from '../Modal';
 import { createLayoutFromTemplate, listFormLayoutTemplates, type FormLayoutTemplateDto } from '../../api/schemas';
 
@@ -54,61 +55,58 @@ export function TemplatePickerModal({ entityId, onClose, onCreated }: Props) {
     }
   }
 
+  const selectedTpl = templates?.find((t) => t.templateKey === templateKey);
+
   return (
     <Modal
       title="Start from template"
       onClose={onClose}
       footer={
-        <>
-          <button type="button" className="btn btn-secondary" onClick={onClose}>
+        <Group justify="flex-end" gap="sm">
+          <Button variant="default" onClick={onClose}>
             Cancel
-          </button>
-          <button type="submit" form="tpl-form" className="btn btn-primary" disabled={pending || !templates?.length}>
+          </Button>
+          <Button type="submit" form="tpl-form" loading={pending} disabled={!templates?.length}>
             {pending ? 'Creating…' : 'Create layout'}
-          </button>
-        </>
+          </Button>
+        </Group>
       }
     >
       {loadErr && (
-        <p role="alert" className="text-error">
+        <Text role="alert" c="red" size="sm" mb="md">
           {loadErr}
-        </p>
+        </Text>
       )}
       {templates && (
-        <form id="tpl-form" onSubmit={(e) => void onSubmit(e)} style={{ display: 'grid', gap: 12 }}>
-          <label className="field-label">
-            Template
-            <select
-              className="input"
+        <form id="tpl-form" onSubmit={(e) => void onSubmit(e)}>
+          <Stack gap="md">
+            <Select
+              label="Template"
+              data={templates.map((t) => ({
+                value: t.templateKey,
+                label: `${t.title} (${t.templateKey})`,
+              }))}
               value={templateKey}
-              onChange={(e) => setTemplateKey(e.target.value)}
+              onChange={(v) => v && setTemplateKey(v)}
               required
-            >
-              {templates.map((t) => (
-                <option key={t.templateKey} value={t.templateKey}>
-                  {t.title} ({t.templateKey})
-                </option>
-              ))}
-            </select>
-          </label>
-          {templates.find((t) => t.templateKey === templateKey)?.description && (
-            <p style={{ margin: 0, fontSize: '0.8125rem', color: '#71717a' }}>
-              {templates.find((t) => t.templateKey === templateKey)?.description}
-            </p>
-          )}
-          <label className="field-label">
-            Layout name
-            <input className="input" value={name} onChange={(e) => setName(e.target.value)} required />
-          </label>
-          <label className="field-label row">
-            <input type="checkbox" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} />
-            Set as default layout
-          </label>
-          {error && (
-            <p role="alert" className="text-error">
-              {error}
-            </p>
-          )}
+            />
+            {selectedTpl?.description && (
+              <Text size="sm" c="dimmed">
+                {selectedTpl.description}
+              </Text>
+            )}
+            <TextInput label="Layout name" value={name} onChange={(e) => setName(e.target.value)} required />
+            <Checkbox
+              label="Set as default layout"
+              checked={isDefault}
+              onChange={(e) => setIsDefault(e.currentTarget.checked)}
+            />
+            {error && (
+              <Text role="alert" c="red" size="sm">
+                {error}
+              </Text>
+            )}
+          </Stack>
         </form>
       )}
     </Modal>

@@ -1,5 +1,6 @@
 import { useId, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { Anchor, Button, Checkbox, Text, TextInput, Title } from '@mantine/core';
 import { isDocumentNumberFieldType, type EntityFieldDto } from '../../api/schemas';
 import type { LayoutItem, LayoutItemAction, LayoutRegion, LayoutRow } from '../../types/formLayout';
 import {
@@ -7,6 +8,7 @@ import {
   readLengthConstraintFromConfig,
 } from '../../utils/fieldTextConstraints';
 import { defaultPresentation, isActionItem, isSafeActionHref, resolveLayoutItemField } from '../../utils/layoutV2';
+import { ReferenceRecordLookupField } from './ReferenceRecordLookupField';
 
 type Props = {
   regions: LayoutRegion[];
@@ -60,13 +62,15 @@ function presentationInputBoxStyle(presWidth: string | undefined): Pick<CSSPrope
   return { width: '100%' };
 }
 
-function actionButtonClass(variant: LayoutItemAction['variant'], action: LayoutItemAction['action']): string {
+function layoutActionButtonVariant(
+  variant: LayoutItemAction['variant'],
+  action: LayoutItemAction['action']
+): 'filled' | 'default' | 'subtle' {
   const v =
-    variant ??
-    (action === 'save' ? 'primary' : action === 'cancel' ? 'secondary' : 'link');
-  if (v === 'primary') return 'btn btn-primary';
-  if (v === 'secondary') return 'btn btn-secondary';
-  return 'link-btn';
+    variant ?? (action === 'save' ? 'primary' : action === 'cancel' ? 'secondary' : 'link');
+  if (v === 'primary') return 'filled';
+  if (v === 'secondary') return 'default';
+  return 'subtle';
 }
 
 function LayoutActionControl({
@@ -78,16 +82,16 @@ function LayoutActionControl({
   disabled: boolean;
   onLayoutAction?: (action: 'save' | 'cancel') => void;
 }) {
-  const cls = actionButtonClass(item.variant, item.action);
+  const btnVariant = layoutActionButtonVariant(item.variant, item.action);
 
   if (item.action === 'link') {
     const href = item.href?.trim() ?? '';
     if (!isSafeActionHref(href)) {
       return (
         <div className="runtime-field runtime-layout-action">
-          <p className="text-error" style={{ fontSize: '0.875rem' }}>
+          <Text c="red" size="sm">
             Invalid or missing link URL
-          </p>
+          </Text>
         </div>
       );
     }
@@ -97,17 +101,17 @@ function LayoutActionControl({
     if (isAppPath) {
       return (
         <div className="runtime-field runtime-layout-action">
-          <Link to={href} className={cls} target={target} rel={rel}>
+          <Anchor component={Link} to={href} target={target} rel={rel} size="sm" underline="hover">
             {item.label}
-          </Link>
+          </Anchor>
         </div>
       );
     }
     return (
       <div className="runtime-field runtime-layout-action">
-        <a href={href} className={cls} target={target} rel={rel}>
+        <Anchor href={href} target={target} rel={rel} size="sm" underline="hover">
           {item.label}
-        </a>
+        </Anchor>
       </div>
     );
   }
@@ -115,28 +119,28 @@ function LayoutActionControl({
   if (item.action === 'save') {
     return (
       <div className="runtime-field runtime-layout-action">
-        <button
+        <Button
           type="button"
-          className={cls}
+          variant={btnVariant}
           disabled={disabled || !onLayoutAction}
           onClick={() => onLayoutAction?.('save')}
         >
           {item.label}
-        </button>
+        </Button>
       </div>
     );
   }
 
   return (
     <div className="runtime-field runtime-layout-action">
-      <button
+      <Button
         type="button"
-        className={cls}
+        variant={btnVariant}
         disabled={!onLayoutAction}
         onClick={() => onLayoutAction?.('cancel')}
       >
         {item.label}
-      </button>
+      </Button>
     </div>
   );
 }
@@ -159,7 +163,6 @@ function FieldControl({
   fieldError?: string;
 }) {
   const inputId = useId();
-  const errId = useId();
   const pres = item.presentation ?? defaultPresentation();
   if (pres.hidden) return null;
 
@@ -173,74 +176,77 @@ function FieldControl({
   const cfg = (field.config ?? undefined) as Record<string, unknown> | undefined;
   const maxLen = fieldTypeSupportsTextLengthConstraints(ft) ? readLengthConstraintFromConfig(cfg, 'maxLength') : undefined;
   const minLen = fieldTypeSupportsTextLengthConstraints(ft) ? readLengthConstraintFromConfig(cfg, 'minLength') : undefined;
-  const invalid = Boolean(fieldError);
-  const ariaErr = invalid ? { 'aria-invalid': true as const, 'aria-describedby': errId } : {};
 
-  const errorNode =
-    fieldError ? (
-      <p id={errId} className="runtime-field-error" role="alert">
-        {fieldError}
-      </p>
-    ) : null;
+  const labelNode = (
+    <>
+      {label}
+      {field.required ? (
+        <Text span c="red" component="span">
+          {' '}
+          *
+        </Text>
+      ) : null}
+    </>
+  );
 
-  let control: ReactNode;
   if (piiLocked) {
-    control = (
-      <input
-        className="input"
-        type="text"
-        value="—"
-        readOnly
-        disabled
-        title="PII hidden (missing entity_builder:pii:read)"
-        style={boxStyle}
-      />
-    );
-  } else if (ft === 'boolean') {
-    const checked = value === true || value === 'true';
-    control = (
-      <label className="form-check">
-        <input
-          id={inputId}
-          type="checkbox"
-          checked={checked}
-          disabled={ro}
-          {...ariaErr}
-          onChange={(e) => onChange(slug, e.target.checked)}
-        />
-        <span>{label}</span>
-      </label>
-    );
     return (
       <div className="runtime-field" key={item.id}>
-        {control}
-        {errorNode}
-        {pres.helpText ? <p className="builder-muted">{pres.helpText}</p> : null}
+        <TextInput
+          label={labelNode}
+          value="—"
+          readOnly
+          disabled
+          title="PII hidden (missing entity_builder:pii:read)"
+          style={boxStyle}
+          size="sm"
+        />
       </div>
     );
-  } else if (ft === 'document_number') {
+  }
+
+  if (ft === 'boolean') {
+    const checked = value === true || value === 'true';
+    return (
+      <div className="runtime-field" key={item.id}>
+        <Checkbox
+          id={inputId}
+          label={label}
+          checked={checked}
+          disabled={ro}
+          error={fieldError}
+          description={pres.helpText}
+          onChange={(e) => onChange(slug, e.currentTarget.checked)}
+        />
+      </div>
+    );
+  }
+
+  let control: ReactNode;
+  if (ft === 'document_number') {
     const str = value === null || value === undefined ? '' : String(value);
     const formLocked = disabled || piiLocked || pres.readOnly;
     control = (
-      <input
+      <TextInput
         id={inputId}
-        className={`input${invalid ? ' input-state-error' : ''}`}
-        type="text"
+        label={labelNode}
         readOnly
         disabled={formLocked}
         value={str}
         placeholder={str ? '' : 'Assigned when the record is saved'}
         title="Stored on the record as businessDocumentNumber; not edited as EAV."
         style={boxStyle}
-        {...ariaErr}
+        error={fieldError}
+        description={pres.helpText}
+        size="sm"
       />
     );
   } else if (ft === 'number') {
     const str = value === null || value === undefined ? '' : String(value);
     control = (
-      <input
+      <TextInput
         id={inputId}
-        className={`form-input${invalid ? ' input-state-error' : ''}`}
+        label={labelNode}
         type="text"
         inputMode="decimal"
         placeholder={pres.placeholder || ''}
@@ -248,16 +254,20 @@ function FieldControl({
         readOnly={ro}
         disabled={ro}
         style={boxStyle}
-        {...ariaErr}
+        error={fieldError}
+        description={pres.helpText}
+        minLength={minLen}
+        maxLength={maxLen}
+        size="sm"
         onChange={(e) => onChange(slug, e.target.value === '' ? null : e.target.value)}
       />
     );
   } else if (ft === 'date') {
     const str = value === null || value === undefined ? '' : String(value);
     control = (
-      <input
+      <TextInput
         id={inputId}
-        className={`input${invalid ? ' input-state-error' : ''}`}
+        label={labelNode}
         type="text"
         placeholder="ISO-8601 instant, e.g. 2024-01-15T12:00:00Z"
         value={str}
@@ -266,34 +276,32 @@ function FieldControl({
         style={boxStyle}
         minLength={minLen}
         maxLength={maxLen}
-        {...ariaErr}
+        error={fieldError}
+        description={pres.helpText}
+        size="sm"
         onChange={(e) => onChange(slug, e.target.value === '' ? null : e.target.value)}
       />
     );
   } else if (ft === 'reference') {
-    const str = value === null || value === undefined ? '' : String(value);
     control = (
-      <input
-        id={inputId}
-        className={`input${invalid ? ' input-state-error' : ''}`}
-        type="text"
-        readOnly={ro}
+      <ReferenceRecordLookupField
+        field={field}
+        value={value}
+        onChange={onChange}
         disabled={ro}
-        title="Reference picker not implemented; paste record UUID"
-        value={str}
-        style={boxStyle}
-        minLength={minLen}
-        maxLength={maxLen}
-        {...ariaErr}
-        onChange={(e) => onChange(slug, e.target.value === '' ? null : e.target.value)}
+        labelNode={labelNode}
+        boxStyle={boxStyle}
+        description={pres.helpText}
+        fieldError={fieldError}
+        inputId={inputId}
       />
     );
   } else {
     const str = value === null || value === undefined ? '' : String(value);
     control = (
-      <input
+      <TextInput
         id={inputId}
-        className={`input${invalid ? ' input-state-error' : ''}`}
+        label={labelNode}
         type="text"
         placeholder={pres.placeholder || ''}
         value={str}
@@ -302,7 +310,9 @@ function FieldControl({
         style={boxStyle}
         minLength={minLen}
         maxLength={maxLen}
-        {...ariaErr}
+        error={fieldError}
+        description={pres.helpText}
+        size="sm"
         onChange={(e) => onChange(slug, e.target.value === '' ? null : e.target.value)}
       />
     );
@@ -310,15 +320,7 @@ function FieldControl({
 
   return (
     <div className="runtime-field" key={item.id}>
-      {ft !== 'boolean' ? (
-        <label className="field-label" htmlFor={inputId}>
-          {label}
-          {field.required ? <span className="text-error"> *</span> : null}
-        </label>
-      ) : null}
       {control}
-      {errorNode}
-      {pres.helpText ? <p className="builder-muted">{pres.helpText}</p> : null}
     </div>
   );
 }
@@ -351,9 +353,9 @@ function renderRow(
             const field = resolveLayoutItemField(item, fields);
             if (!item.fieldId || !field) {
               return item.fieldSlug ? (
-                <p key={item.id} className="builder-muted">
+                <Text key={item.id} size="sm" c="dimmed">
                   Unknown field ({item.fieldSlug})
-                </p>
+                </Text>
               ) : null;
             }
             const v = values[field.slug];
@@ -398,9 +400,15 @@ function RegionBlock({
   const relPlaceholder = region.binding?.kind === 'entity_relationship';
   return (
     <section className="runtime-region" key={region.id}>
-      {region.title ? <h3 className="runtime-region-title">{region.title}</h3> : null}
+      {region.title ? (
+        <Title order={3} className="runtime-region-title" size="h5" mb="sm">
+          {region.title}
+        </Title>
+      ) : null}
       {relPlaceholder ? (
-        <p className="builder-muted">Line items / related records are not available in this runtime yet.</p>
+        <Text size="sm" c="dimmed">
+          Line items / related records are not available in this runtime yet.
+        </Text>
       ) : (
         region.rows.map((row) =>
           renderRow(row, fields, values, onChange, disabled, canPiiRead, onLayoutAction, fieldErrors)
@@ -437,16 +445,18 @@ function TabGroupBlock({
     <div className="runtime-tab-group">
       <div className="runtime-tab-bar" role="tablist">
         {regions.map((r, i) => (
-          <button
+          <Button
             key={r.id}
             type="button"
             role="tab"
+            size="xs"
+            variant={i === safe ? 'filled' : 'default'}
             aria-selected={i === safe}
             className={`runtime-tab ${i === safe ? 'runtime-tab-active' : ''}`}
             onClick={() => setIdx(i)}
           >
             {r.title || `Tab ${i + 1}`}
-          </button>
+          </Button>
         ))}
       </div>
       {active ? (
@@ -517,6 +527,8 @@ export function LayoutV2RuntimeRenderer({
 }
 
 function fieldDisplayLabel(field: EntityFieldDto): string {
+  const d = field.displayLabel?.trim();
+  if (d) return d;
   return field.labelOverride?.trim() || field.name;
 }
 

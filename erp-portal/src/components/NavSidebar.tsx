@@ -1,8 +1,19 @@
+import { useTranslation } from 'react-i18next';
 import { NavLink } from 'react-router-dom';
+import { ActionIcon, Badge, Box, ScrollArea } from '@mantine/core';
 import type { NavigationItemDto } from '../api/schemas';
+import { IconChevronsRight } from '../ui/icons/IconChevronsRight';
 import { PortalNavIcon } from '../ui/portalNavIcons';
 
-function NavBranch({ nodes, depth }: { nodes: NavigationItemDto[]; depth: number }) {
+function NavBranch({
+  nodes,
+  depth,
+  t,
+}: {
+  nodes: NavigationItemDto[];
+  depth: number;
+  t: (key: string, opt?: Record<string, string>) => string;
+}) {
   return (
     <ul className={`nav-tree${depth > 0 ? ' nav-tree-nested' : ''}`}>
       {nodes
@@ -15,6 +26,11 @@ function NavBranch({ nodes, depth }: { nodes: NavigationItemDto[]; depth: number
                 <a href={n.routePath} className="nav-tree-link" target="_blank" rel="noreferrer">
                   <PortalNavIcon name={n.icon} className="nav-tree-icon" />
                   {n.label}
+                  {(n.designStatus ?? 'PUBLISHED') === 'WIP' && (
+                    <Badge size="xs" variant="outline" color="orange" ml={6} title={t('nav.wipTitle')}>
+                      {t('nav.wipBadge')}
+                    </Badge>
+                  )}
                 </a>
               ) : (
                 <NavLink
@@ -29,6 +45,11 @@ function NavBranch({ nodes, depth }: { nodes: NavigationItemDto[]; depth: number
                 >
                   <PortalNavIcon name={n.icon} className="nav-tree-icon" />
                   {n.label}
+                  {(n.designStatus ?? 'PUBLISHED') === 'WIP' && (
+                    <Badge size="xs" variant="outline" color="orange" ml={6} title={t('nav.wipTitle')}>
+                      {t('nav.wipBadge')}
+                    </Badge>
+                  )}
                 </NavLink>
               )
             ) : (
@@ -37,7 +58,9 @@ function NavBranch({ nodes, depth }: { nodes: NavigationItemDto[]; depth: number
                 <span className="nav-tree-section-label">{n.label}</span>
               </div>
             )}
-            {n.children && n.children.length > 0 && <NavBranch nodes={n.children} depth={depth + 1} />}
+            {n.children && n.children.length > 0 && (
+              <NavBranch nodes={n.children} depth={depth + 1} t={t} />
+            )}
           </li>
         ))}
     </ul>
@@ -51,21 +74,35 @@ type Props = {
 };
 
 export function NavSidebar({ items, collapsed, onExpand }: Props) {
+  const { t } = useTranslation();
+
   if (collapsed) {
     return (
-      <aside className="app-sidebar app-sidebar-collapsed" aria-label="Module navigation">
-        <button type="button" className="app-sidebar-expand" onClick={onExpand} title="Expand navigation">
-          »
-        </button>
-      </aside>
+      <Box
+        h="100%"
+        pt="xs"
+        display="flex"
+        style={{ justifyContent: 'center' }}
+        role="navigation"
+        aria-label={t('nav.moduleNavAria')}
+      >
+        <ActionIcon
+          variant="default"
+          onClick={onExpand}
+          title={t('nav.expandNav')}
+          aria-label={t('nav.expandNav')}
+        >
+          <IconChevronsRight size={18} stroke={1.5} aria-hidden />
+        </ActionIcon>
+      </Box>
     );
   }
 
   return (
-    <aside className="app-sidebar" aria-label="Module navigation">
-      <div className="app-sidebar-scroll">
-        <NavBranch nodes={items} depth={0} />
-      </div>
-    </aside>
+    <ScrollArea h="100%" type="scroll" scrollbarSize={8} role="navigation" aria-label={t('nav.moduleNavAria')}>
+      <Box p="xs" pr="sm">
+        <NavBranch nodes={items} depth={0} t={t} />
+      </Box>
+    </ScrollArea>
   );
 }

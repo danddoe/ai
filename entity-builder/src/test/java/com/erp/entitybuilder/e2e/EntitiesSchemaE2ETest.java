@@ -45,6 +45,8 @@ class EntitiesSchemaE2ETest extends AbstractEntityBuilderE2ETest {
         assertThat(createResp.getBody().get("name")).isEqualTo("Customer");
         assertThat(createResp.getBody().get("slug")).isEqualTo("customer");
         assertThat(createResp.getBody().get("categoryKey")).isEqualTo("accounts_receivable");
+        assertThat(createResp.getBody().get("defaultDisplayFieldSlug")).isEqualTo("name");
+        assertThat(createResp.getBody().get("definitionScope")).isEqualTo("TENANT_OBJECT");
 
         // Invalid categoryKey on create
         Map<String, Object> badCat = new HashMap<>();
@@ -100,6 +102,25 @@ class EntitiesSchemaE2ETest extends AbstractEntityBuilderE2ETest {
         );
         assertThat(getResp.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(getResp.getBody().get("name")).isEqualTo("Customer");
+        assertThat(getResp.getBody().get("definitionScope")).isEqualTo("TENANT_OBJECT");
+
+        Map<String, Object> promoteScope = new HashMap<>();
+        promoteScope.put("definitionScope", "STANDARD_OBJECT");
+        ResponseEntity<Map> scopeResp = restTemplate.exchange(
+                baseUrl + "/v1/entities/" + entityId,
+                HttpMethod.PATCH,
+                new HttpEntity<>(promoteScope, headers),
+                Map.class
+        );
+        assertThat(scopeResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(scopeResp.getBody().get("definitionScope")).isEqualTo("STANDARD_OBJECT");
+        ResponseEntity<Map> getScopeResp = restTemplate.exchange(
+                baseUrl + "/v1/entities/" + entityId,
+                HttpMethod.GET,
+                new HttpEntity<>(null, headers),
+                Map.class
+        );
+        assertThat(getScopeResp.getBody().get("definitionScope")).isEqualTo("STANDARD_OBJECT");
 
         // Update entity
         Map<String, Object> update = new HashMap<>();

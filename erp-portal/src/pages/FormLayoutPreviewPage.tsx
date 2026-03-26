@@ -1,8 +1,18 @@
+import { Button } from '@mantine/core';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
-import { getEntity, getFormLayout, listFields, type EntityDto, type EntityFieldDto } from '../api/schemas';
+import {
+  getEntity,
+  getFormLayout,
+  listEntities,
+  listFields,
+  type EntityDto,
+  type EntityFieldDto,
+} from '../api/schemas';
 import { useAuth } from '../auth/AuthProvider';
+import { RecordFormRuntimeProvider } from '../components/runtime/RecordFormRuntimeContext';
 import { LayoutV2RuntimeRenderer } from '../components/runtime/LayoutV2RuntimeRenderer';
+import { buildEntityBySlugForReferenceFields } from '../utils/referenceFieldConfig';
 import { parseLayoutV2, regionsForWizardStep } from '../utils/layoutV2';
 import type { LayoutV2 } from '../types/formLayout';
 
@@ -33,7 +43,7 @@ function buildSampleValues(fields: EntityFieldDto[]): Record<string, unknown> {
 export function FormLayoutPreviewPage() {
   const { entityId = '', layoutId = '' } = useParams();
   const location = useLocation();
-  const { canPiiRead } = useAuth();
+  const { tenantId, canPiiRead } = useAuth();
 
   const [entity, setEntity] = useState<EntityDto | null>(null);
   const [layout, setLayout] = useState<LayoutV2 | null>(null);
@@ -44,6 +54,12 @@ export function FormLayoutPreviewPage() {
   const [wizardStep, setWizardStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [allEntities, setAllEntities] = useState<EntityDto[]>([]);
+
+  const entityBySlug = useMemo(
+    () => buildEntityBySlugForReferenceFields(fields, allEntities),
+    [fields, allEntities]
+  );
 
   const wizardIds = layout?.runtime?.recordEntry?.wizard?.stepOrderRegionIds ?? [];
   const isWizard =
@@ -64,9 +80,14 @@ export function FormLayoutPreviewPage() {
     const draftFromNav = st?.draft;
     if (isLayoutV2Draft(draftFromNav)) {
       try {
-        const [e, flds] = await Promise.all([getEntity(entityId), listFields(entityId)]);
+        const [e, flds, allEnts] = await Promise.all([
+          getEntity(entityId),
+          listFields(entityId),
+          listEntities(),
+        ]);
         setEntity(e);
         setFields(flds);
+        setAllEntities(allEnts);
         setLayout(draftFromNav);
         setLayoutName('(unsaved draft)');
         setValues(buildSampleValues(flds));
@@ -75,6 +96,7 @@ export function FormLayoutPreviewPage() {
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load');
         setLayout(null);
+        setAllEntities([]);
       } finally {
         setLoading(false);
       }
@@ -82,13 +104,15 @@ export function FormLayoutPreviewPage() {
     }
 
     try {
-      const [e, flds, dto] = await Promise.all([
+      const [e, flds, dto, allEnts] = await Promise.all([
         getEntity(entityId),
         listFields(entityId),
         getFormLayout(entityId, layoutId),
+        listEntities(),
       ]);
       setEntity(e);
       setFields(flds);
+      setAllEntities(allEnts);
       setLayoutName(dto.name);
       const parsed = parseLayoutV2(dto.layout);
       if (!parsed) {
@@ -103,6 +127,7 @@ export function FormLayoutPreviewPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load');
       setLayout(null);
+      setAllEntities([]);
     } finally {
       setLoading(false);
     }
@@ -152,9 +177,9 @@ export function FormLayoutPreviewPage() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <Link className="btn btn-secondary" to={`/entities/${entityId}/layouts/${layoutId}`}>
+          <Button component={Link} variant="default" to={`/entities/${entityId}/layouts/${layoutId}`}>
             Back to builder
-          </Link>
+          </Button>
         </div>
       </header>
 
@@ -170,41 +195,40 @@ export function FormLayoutPreviewPage() {
         <>
           {isWizard && (
             <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-              <button
+              <Button
                 type="button"
-                className="btn btn-secondary btn-sm"
+                variant="default"
+                size="sm"
                 disabled={wizardStep <= 0}
                 onClick={() => setWizardStep((s) => Math.max(0, s - 1))}
               >
                 Back
-              </button>
+              </Button>
               {!wizardLast && (
-                <button
-                  type="button"
-                  className="btn btn-primary btn-sm"
-                  onClick={() => setWizardStep((s) => s + 1)}
-                >
+                <Button type="button" size="sm" onClick={() => setWizardStep((s) => s + 1)}>
                   Next
-                </button>
+                </Button>
               )}
             </div>
           )}
-          <LayoutV2RuntimeRenderer
-            regions={regionsToRender}
-            fields={fields}
-            values={values}
-            onChange={onFieldChange}
-            disabled={false}
-            canPiiRead={canPiiRead}
-            useTabGroups={!isWizard}
-            onLayoutAction={(a) => {
-              window.alert(
-                a === 'save'
-                  ? 'Preview: Save runs on the real record form (not in preview).'
-                  : 'Preview: Cancel would return to the record list on the real form.'
-              );
-            }}
-          />
+          <RecordFormRuntimeProvider tenantId={tenantId ?? null} hostEntityId={entityId} entityBySlug={entityBySlug}>
+            <LayoutV2RuntimeRenderer
+              regions={regionsToRender}
+              fields={fields}
+              values={values}
+              onChange={onFieldChange}
+              disabled={false}
+              canPiiRead={canPiiRead}
+              useTabGroups={!isWizard}
+              onLayoutAction={(a) => {
+                window.alert(
+                  a === 'save'
+                    ? 'Preview: Save runs on the real record form (not in preview).'
+                    : 'Preview: Cancel would return to the record list on the real form.'
+                );
+              }}
+            />
+          </RecordFormRuntimeProvider>
         </>
       )}
     </div>

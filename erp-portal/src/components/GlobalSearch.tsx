@@ -1,3 +1,4 @@
+import { Button, Kbd, Text, rem, useMantineTheme } from '@mantine/core';
 import { Command } from 'cmdk';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -11,6 +12,7 @@ function formatCategory(cat: string): string {
 }
 
 export function GlobalSearch() {
+  const theme = useMantineTheme();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
@@ -115,29 +117,55 @@ export function GlobalSearch() {
   const recordItems = data?.records ?? [];
   const deepItems = data?.deepHistory ?? [];
 
+  const kbd =
+    typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform) ? '⌘K' : 'Ctrl+K';
+
   return (
     <div className="global-search" ref={panelRef}>
-      <button
+      <Button
         type="button"
+        variant="default"
+        color="gray"
+        fullWidth
+        justify="space-between"
+        size="sm"
         className="global-search-trigger"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-haspopup="dialog"
+        styles={{
+          root: {
+            borderColor: theme.colors.gray[3],
+            background: theme.colors.gray[0],
+            color: theme.colors.gray[6],
+          },
+        }}
       >
-        <span className="global-search-placeholder">Search…</span>
-        <kbd className="global-search-kbd">
-          {typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform) ? '⌘K' : 'Ctrl+K'}
-        </kbd>
-      </button>
+        <Text span size="sm" c="dimmed">
+          Search…
+        </Text>
+        <Kbd size="xs" fz={10}>
+          {kbd}
+        </Kbd>
+      </Button>
       {open && (
         <div className="global-search-panel" role="dialog" aria-label="Global search">
           <Command shouldFilter={false} loop>
             <Command.Input
-              className="global-search-input"
-              placeholder="Search navigation, records, activity…"
+              placeholder="Search navigation and records…"
               value={input}
               onValueChange={setInput}
               aria-autocomplete="list"
+              style={{
+                width: '100%',
+                marginBottom: rem(8),
+                padding: `${rem(8)} ${rem(10)}`,
+                fontSize: theme.fontSizes.sm,
+                borderRadius: theme.radius.sm,
+                border: `${rem(1)} solid ${theme.colors.gray[4]}`,
+                outline: 'none',
+                background: theme.white,
+              }}
             />
             {error && (
               <p className="global-search-hint text-error" role="status">
@@ -210,9 +238,9 @@ export function GlobalSearch() {
               )}
             </Command.List>
           </Command>
-          <button type="button" className="global-search-close link-btn" onClick={() => setOpen(false)}>
+          <Button type="button" variant="subtle" size="xs" fullWidth mt="xs" onClick={() => setOpen(false)}>
             Close
-          </button>
+          </Button>
         </div>
       )}
     </div>

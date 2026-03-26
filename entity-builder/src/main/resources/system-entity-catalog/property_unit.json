@@ -56,6 +56,15 @@
         "storage": "CORE_DOMAIN",
         "coreBinding": { "service": "core-service", "column": "status" }
       }
+    },
+    {
+      "name": "Extension notes",
+      "slug": "extension_notes",
+      "sortOrder": 100,
+      "fieldType": "string",
+      "required": false,
+      "pii": false,
+      "config": { "storage": "EAV_EXTENSION" }
     }
   ]
 }

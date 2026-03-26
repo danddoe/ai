@@ -4,6 +4,7 @@ import com.erp.entitybuilder.domain.RecordListView;
 import com.erp.entitybuilder.service.RecordListViewService;
 import com.erp.entitybuilder.web.v1.dto.RecordListViewDtos;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -34,7 +35,7 @@ public class RecordListViewsController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('entity_builder:schema:write')")
+    @PreAuthorize("@entityBuilderSecurity.canWriteTenantSchema()")
     public RecordListViewDtos.RecordListViewDto create(
             @PathVariable UUID entityId,
             @Valid @RequestBody RecordListViewDtos.CreateRecordListViewRequest req
@@ -46,7 +47,7 @@ public class RecordListViewsController {
         } catch (Exception e) {
             throw new com.erp.entitybuilder.web.ApiException(org.springframework.http.HttpStatus.BAD_REQUEST, "bad_request", "Invalid definition JSON");
         }
-        RecordListView v = recordListViewService.create(tenantId, entityId, req.getName(), definitionJson, req.isDefault());
+        RecordListView v = recordListViewService.create(tenantId, entityId, req.getName(), definitionJson, req.isDefault(), req.getStatus());
         return toDto(v);
     }
 
@@ -59,7 +60,7 @@ public class RecordListViewsController {
     }
 
     @PatchMapping("/{viewId}")
-    @PreAuthorize("hasAuthority('entity_builder:schema:write')")
+    @PreAuthorize("@entityBuilderSecurity.canWriteTenantSchema()")
     public RecordListViewDtos.RecordListViewDto update(
             @PathVariable UUID entityId,
             @PathVariable UUID viewId,
@@ -80,7 +81,7 @@ public class RecordListViewsController {
     }
 
     @DeleteMapping("/{viewId}")
-    @PreAuthorize("hasAuthority('entity_builder:schema:write')")
+    @PreAuthorize("@entityBuilderSecurity.canWriteTenantSchema()")
     @ResponseStatus(org.springframework.http.HttpStatus.NO_CONTENT)
     public void delete(@PathVariable UUID entityId, @PathVariable UUID viewId) {
         UUID tenantId = SecurityUtil.principal().getTenantId();
@@ -89,8 +90,13 @@ public class RecordListViewsController {
     }
 
     private RecordListViewDtos.RecordListViewDto toDto(RecordListView v) {
+        String definitionJson = v.getDefinition();
         try {
-            Map<String, Object> defMap = objectMapper.readValue(v.getDefinition(), new TypeReference<>() {});
+            JsonNode node = objectMapper.readTree(definitionJson);
+            if (!node.isObject()) {
+                return toDtoWithRawFallback(v, definitionJson);
+            }
+            Map<String, Object> defMap = objectMapper.convertValue(node, new TypeReference<>() {});
             return new RecordListViewDtos.RecordListViewDto(
                     v.getId(),
                     v.getTenantId(),
@@ -103,17 +109,21 @@ public class RecordListViewsController {
                     v.getUpdatedAt()
             );
         } catch (Exception e) {
-            return new RecordListViewDtos.RecordListViewDto(
-                    v.getId(),
-                    v.getTenantId(),
-                    v.getEntityId(),
-                    v.getName(),
-                    v.isDefault(),
-                    v.getStatus(),
-                    Map.of("raw", v.getDefinition()),
-                    v.getCreatedAt(),
-                    v.getUpdatedAt()
-            );
+            return toDtoWithRawFallback(v, definitionJson);
         }
+    }
+
+    private RecordListViewDtos.RecordListViewDto toDtoWithRawFallback(RecordListView v, String definitionJson) {
+        return new RecordListViewDtos.RecordListViewDto(
+                v.getId(),
+                v.getTenantId(),
+                v.getEntityId(),
+                v.getName(),
+                v.isDefault(),
+                v.getStatus(),
+                Map.of("raw", definitionJson != null ? definitionJson : ""),
+                v.getCreatedAt(),
+                v.getUpdatedAt()
+        );
     }
 }

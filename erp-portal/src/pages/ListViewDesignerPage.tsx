@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Button, Checkbox, Code, Select, Table, Text, TextInput } from '@mantine/core';
 import {
   createRecordListView,
   getEntity,
@@ -13,10 +14,12 @@ import {
   type RecordListViewDto,
 } from '../api/schemas';
 import { useAuth } from '../auth/AuthProvider';
+import { canMutateEntityDefinition } from '../auth/jwtPermissions';
 import { CreateFieldModal } from '../components/builder/CreateFieldModal';
 import { EditFieldModal } from '../components/builder/EditFieldModal';
 import { ListDesignerFieldsPanel } from '../components/builder/ListDesignerFieldsPanel';
 import { clearPortalNavigationCache, usePortalNavigation } from '../hooks/usePortalNavigation';
+import { publishDesignArtifacts } from '../ui/publishDesignArtifacts';
 import {
   buildRecordListViewDefinitionV1,
   parseRecordListViewDefinition,
@@ -49,7 +52,7 @@ export function ListViewDesignerPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { items: navRoots, refresh } = usePortalNavigation();
-  const { canSchemaWrite, canCreatePortalNavItem } = useAuth();
+  const { canSchemaWrite, canCreatePortalNavItem, permissions } = useAuth();
 
   const isNew = viewId === 'new';
   const candidates = useMemo(() => navItemsForEntityRecordsList(navRoots, entityId), [navRoots, entityId]);
@@ -78,6 +81,21 @@ export function ListViewDesignerPage() {
   const [createFieldOpen, setCreateFieldOpen] = useState(false);
   const [editField, setEditField] = useState<EntityFieldDto | null>(null);
 
+  const [viewLifecycleStatus, setViewLifecycleStatus] = useState('ACTIVE');
+  const [linkedNavItemId, setLinkedNavItemId] = useState('');
+  const [linkedFormLayoutId, setLinkedFormLayoutId] = useState('');
+
+  const canMutateFieldDefs = useMemo(
+    () => (entity ? canMutateEntityDefinition(permissions, entity) : false),
+    [entity, permissions]
+  );
+
+  useEffect(() => {
+    const st = location.state as { linkedNavigationItemId?: string; linkedFormLayoutId?: string } | undefined;
+    setLinkedNavItemId(st?.linkedNavigationItemId ?? '');
+    setLinkedFormLayoutId(st?.linkedFormLayoutId ?? '');
+  }, [location.key, location.state]);
+
   const listState = useMemo((): ListViewQueryState => {
     if (workingViewId) {
       // Sidebar URL uses showRecordId=0 only when Id is hidden; otherwise the saved definition applies.
@@ -100,15 +118,22 @@ export function ListViewDesignerPage() {
 
   const recordsPreviewPath = useMemo(() => recordsListPath(entityId, listState), [entityId, listState]);
 
+  /** Suppresses setState from stale in-flight loads (Strict Mode double mount, rapid route changes). */
+  const loadGenerationRef = useRef(0);
+
   const load = useCallback(async () => {
-    if (!entityId || !viewId) return;
+    const eid = entityId.trim();
+    const vid = viewId.trim();
+    if (!eid || !vid) return;
+    const gen = ++loadGenerationRef.current;
     setLoadError(null);
     try {
       const [e, f, vlist] = await Promise.all([
-        getEntity(entityId),
-        listFields(entityId),
-        listRecordListViews(entityId),
+        getEntity(eid),
+        listFields(eid),
+        listRecordListViews(eid),
       ]);
+      if (gen !== loadGenerationRef.current) return;
       setEntity(e);
       setFields([...f].sort((a, b) => a.name.localeCompare(b.name)));
       setViews(vlist);
@@ -121,6 +146,7 @@ export function ListViewDesignerPage() {
         setShowRowActions(true);
         setShowRecordId(true);
         setViewIsDefault(false);
+        setViewLifecycleStatus('ACTIVE');
         const fromQs = (location.state as { fromRecordsQuery?: string } | null)?.fromRecordsQuery;
         if (fromQs) {
           const parsed = parseListViewQueryFromRoutePath(`?${fromQs}`);
@@ -128,7 +154,9 @@ export function ListViewDesignerPage() {
           setColumns(normalizeOrders(legacyColumnsFromQuery(parsed.cols, parsed.inlineSlugs)));
           if (parsed.viewId && canSchemaWrite) {
             try {
-              const dto = await getRecordListView(entityId, parsed.viewId);
+              const dto = await getRecordListView(eid, parsed.viewId);
+              if (gen !== loadGenerationRef.current) return;
+              setViewLifecycleStatus(dto.status);
               const def = parseRecordListViewDefinition(dto.definition);
               if (def) {
                 setWorkingViewId(parsed.viewId);
@@ -139,7 +167,7 @@ export function ListViewDesignerPage() {
                   parsed.showRecordId !== undefined ? parsed.showRecordId : def.showRecordId !== false
                 );
                 setViewIsDefault(dto.isDefault);
-                navigate(`/entities/${entityId}/list-views/${parsed.viewId}`, { replace: true });
+                navigate(`/entities/${eid}/list-views/${parsed.viewId}`, { replace: true });
               }
             } catch {
               /* keep legacy cols from URL */
@@ -147,15 +175,18 @@ export function ListViewDesignerPage() {
           }
         }
       } else {
-        const dto = await getRecordListView(entityId, viewId);
+        const dto = await getRecordListView(eid, vid);
+        if (gen !== loadGenerationRef.current) return;
+        setViewLifecycleStatus(dto.status);
         const def = parseRecordListViewDefinition(dto.definition);
+        setViewName(dto.name);
+        setWorkingViewId(dto.id);
         if (!def) {
-          setLoadError('This list view is not valid version 1 JSON.');
+          setLoadError('This list view is not valid version 1 JSON. You can rebuild columns and save to fix the stored definition.');
           setColumns([]);
-          setViewIsDefault(false);
+          setViewIsDefault(dto.isDefault);
         } else {
-          setWorkingViewId(dto.id);
-          setViewName(dto.name);
+          setLoadError(null);
           setColumns(normalizeOrders(def.columns));
           setShowRowActions(def.showRowActions !== false);
           setShowRecordId(def.showRecordId !== false);
@@ -163,6 +194,7 @@ export function ListViewDesignerPage() {
         }
       }
     } catch (err) {
+      if (gen !== loadGenerationRef.current) return;
       setLoadError(err instanceof Error ? err.message : 'Failed to load');
       setEntity(null);
       setFields([]);
@@ -184,6 +216,26 @@ export function ListViewDesignerPage() {
   }, [candidates]);
 
   const selectedCol = selectedIdx !== null && selectedIdx >= 0 ? columns[selectedIdx] : null;
+
+  const switchViewSelectValue = useMemo(
+    () =>
+      isNew ? 'new' : views.some((v) => v.id === viewId) ? viewId : viewId || 'new',
+    [isNew, views, viewId]
+  );
+
+  const switchViewSelectData = useMemo(() => {
+    const rows: { value: string; label: string }[] = [{ value: 'new', label: '+ New list view' }];
+    if (!isNew && viewId && !views.some((v) => v.id === viewId)) {
+      rows.push({
+        value: viewId,
+        label: `${viewName || 'Current view'}${viewIsDefault ? ' (default)' : ''}`,
+      });
+    }
+    for (const v of views) {
+      rows.push({ value: v.id, label: `${v.name}${v.isDefault ? ' (default)' : ''}` });
+    }
+    return rows;
+  }, [isNew, viewId, views, viewName, viewIsDefault]);
 
   function addColumn(slug: string) {
     if (!canSchemaWrite) return;
@@ -258,9 +310,11 @@ export function ListViewDesignerPage() {
       };
       let savedId = workingViewId;
       if (workingViewId) {
-        await patchRecordListView(entityId, workingViewId, body);
+        const updated = await patchRecordListView(entityId, workingViewId, body);
+        setViewLifecycleStatus(updated.status);
       } else {
         const created = await createRecordListView(entityId, body);
+        setViewLifecycleStatus(created.status);
         savedId = created.id;
         setWorkingViewId(created.id);
         navigate(`/entities/${entityId}/list-views/${created.id}`, { replace: true });
@@ -279,6 +333,34 @@ export function ListViewDesignerPage() {
   const saveTargetId =
     candidates.length === 1 ? String(candidates[0].id) : navItemId.trim();
   const canSaveNav = canCreatePortalNavItem && candidates.length > 0 && saveTargetId.length > 0;
+
+  const effectiveListViewId = workingViewId || (!isNew ? viewId : null);
+  const showWipPublish =
+    canSchemaWrite &&
+    !!linkedNavItemId &&
+    viewLifecycleStatus === 'WIP' &&
+    !!effectiveListViewId;
+
+  async function publishWip() {
+    if (!linkedNavItemId || !effectiveListViewId) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await publishDesignArtifacts({
+        entityId,
+        navigationItemId: linkedNavItemId,
+        listViewId: effectiveListViewId,
+        formLayoutId: linkedFormLayoutId || undefined,
+      });
+      const dto = await getRecordListView(entityId, effectiveListViewId);
+      setViewLifecycleStatus(dto.status);
+      void refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Publish failed');
+    } finally {
+      setSaving(false);
+    }
+  }
 
   async function saveToSidebar() {
     if (!canSaveNav) {
@@ -375,94 +457,106 @@ export function ListViewDesignerPage() {
           <span className="env-badge" title="API base">
             {import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}
           </span>
-          <Link className="btn btn-secondary btn-sm" to={recordsPreviewPath}>
+          <Button component={Link} variant="default" size="sm" to={recordsPreviewPath}>
             Open records (preview)
-          </Link>
-          <button type="button" className="btn btn-secondary btn-sm" onClick={loadFromRecordsUrl}>
+          </Button>
+          <Button type="button" variant="default" size="sm" onClick={loadFromRecordsUrl}>
             Import from query…
-          </button>
+          </Button>
           {canSchemaWrite && (
-            <button type="button" className="btn btn-primary" disabled={saving} onClick={() => void saveView()}>
+            <Button type="button" disabled={saving} onClick={() => void saveView()}>
               {saving ? 'Saving…' : 'Save'}
-            </button>
+            </Button>
           )}
           {canSaveNav && (
-            <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => void saveToSidebar()}>
+            <Button type="button" variant="default" disabled={saving} onClick={() => void saveToSidebar()}>
               Save to sidebar link
-            </button>
+            </Button>
           )}
         </div>
       </header>
 
+      {showWipPublish && (
+        <div
+          role="status"
+          className="builder-muted"
+          style={{
+            margin: '0 1rem 12px',
+            padding: '12px 14px',
+            background: 'var(--builder-warn-bg, #fef3c7)',
+            borderRadius: 8,
+            fontSize: '0.9rem',
+          }}
+        >
+          <strong>Work in progress</strong> — Sidebar link and related layouts are not published yet.{' '}
+          {linkedFormLayoutId ? (
+            <>
+              Edit the{' '}
+              <Link
+                to={`/entities/${entityId}/layouts/${linkedFormLayoutId}`}
+                state={{
+                  linkedNavigationItemId: linkedNavItemId,
+                  linkedListViewId: effectiveListViewId ?? undefined,
+                }}
+              >
+                form layout
+              </Link>{' '}
+              if needed, then publish all together.
+            </>
+          ) : null}
+          <Button type="button" size="sm" style={{ marginLeft: 12 }} disabled={saving} onClick={() => void publishWip()}>
+            {saving ? 'Publishing…' : 'Publish'}
+          </Button>
+        </div>
+      )}
+
       <div className="builder-name-row" style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-end' }}>
-        <label className="field-label" style={{ flex: '1 1 220px', margin: 0 }}>
-          View name
-          <input
-            className="input"
-            value={viewName}
-            onChange={(e) => setViewName(e.target.value)}
-            readOnly={!canSchemaWrite}
-            placeholder="e.g. Default table"
-          />
-        </label>
-        <label className="field-label" style={{ flex: '1 1 200px', margin: 0 }}>
-          Switch view
-          <select
-            className="input"
-            value={isNew ? 'new' : viewId}
-            onChange={(e) => onSwitchView(e.target.value)}
-          >
-            <option value="new">+ New list view</option>
-            {views.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.name}
-                {v.isDefault ? ' (default)' : ''}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="field-label row" style={{ margin: 0 }}>
-          <input
-            type="checkbox"
-            checked={showRowActions}
-            onChange={(e) => setShowRowActions(e.target.checked)}
-            disabled={!canSchemaWrite}
-          />
-          <span>Show row actions</span>
-        </label>
-        <label className="field-label row" style={{ margin: 0 }}>
-          <input
-            type="checkbox"
-            checked={showRecordId}
-            onChange={(e) => setShowRecordId(e.target.checked)}
-            disabled={!canSchemaWrite}
-          />
-          <span>Show record ID column</span>
-        </label>
-        <label className="field-label row" style={{ margin: 0 }} title="Used when Records has no ?view= in the URL">
-          <input
-            type="checkbox"
-            checked={viewIsDefault}
-            onChange={(e) => setViewIsDefault(e.target.checked)}
-            disabled={!canSchemaWrite}
-          />
-          <span>Default list view for entity</span>
-        </label>
+        <TextInput
+          label="View name"
+          style={{ flex: '1 1 220px' }}
+          value={viewName}
+          onChange={(e) => setViewName(e.target.value)}
+          readOnly={!canSchemaWrite}
+          placeholder="e.g. Default table"
+        />
+        <Select
+          label="Switch view"
+          style={{ flex: '1 1 200px' }}
+          value={switchViewSelectValue}
+          onChange={(v) => v && onSwitchView(v)}
+          data={switchViewSelectData}
+        />
+        <Checkbox
+          checked={showRowActions}
+          onChange={(e) => setShowRowActions(e.currentTarget.checked)}
+          disabled={!canSchemaWrite}
+          label="Show row actions"
+        />
+        <Checkbox
+          checked={showRecordId}
+          onChange={(e) => setShowRecordId(e.currentTarget.checked)}
+          disabled={!canSchemaWrite}
+          label="Show record ID column"
+        />
+        <Checkbox
+          checked={viewIsDefault}
+          onChange={(e) => setViewIsDefault(e.currentTarget.checked)}
+          disabled={!canSchemaWrite}
+          label="Default list view for entity"
+          title="Used when Records has no ?view= in the URL"
+        />
       </div>
 
       {candidates.length > 1 && canCreatePortalNavItem && (
         <div className="builder-name-row" style={{ paddingTop: 0 }}>
-          <label className="field-label" style={{ maxWidth: 420, margin: 0 }}>
-            Sidebar link to update (Save to sidebar)
-            <select className="input" value={navItemId} onChange={(e) => setNavItemId(e.target.value)}>
-              <option value="">— Select —</option>
-              {candidates.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <Select
+            label="Sidebar link to update (Save to sidebar)"
+            placeholder="— Select —"
+            maw={420}
+            value={navItemId || null}
+            onChange={(v) => setNavItemId(v ?? '')}
+            data={candidates.map((c) => ({ value: c.id, label: c.label }))}
+          />
         </div>
       )}
 
@@ -494,9 +588,13 @@ export function ListViewDesignerPage() {
           filter={fieldFilter}
           onFilterChange={setFieldFilter}
           onAddColumn={addColumn}
-          onOpenCreateField={() => setCreateFieldOpen(true)}
+          onOpenCreateField={() => {
+            if (!canMutateFieldDefs) return;
+            setCreateFieldOpen(true);
+          }}
           onOpenEditField={(f) => setEditField(f)}
           schemaWritable={canSchemaWrite}
+          fieldDefinitionsWritable={canMutateFieldDefs}
         />
 
         <section className="builder-panel builder-panel-grow">
@@ -531,9 +629,10 @@ export function ListViewDesignerPage() {
                         <code>{c.fieldSlug}</code>
                       </span>
                       <div className="builder-item-actions">
-                        <button
+                        <Button
                           type="button"
-                          className="btn btn-xs btn-secondary"
+                          variant="default"
+                          size="xs"
                           disabled={!canSchemaWrite || idx === 0}
                           onClick={(e) => {
                             e.stopPropagation();
@@ -541,10 +640,11 @@ export function ListViewDesignerPage() {
                           }}
                         >
                           ↑
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                           type="button"
-                          className="btn btn-xs btn-secondary"
+                          variant="default"
+                          size="xs"
                           disabled={!canSchemaWrite || idx >= columns.length - 1}
                           onClick={(e) => {
                             e.stopPropagation();
@@ -552,10 +652,11 @@ export function ListViewDesignerPage() {
                           }}
                         >
                           ↓
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                           type="button"
-                          className="btn btn-xs btn-secondary"
+                          variant="default"
+                          size="xs"
                           disabled={!canSchemaWrite}
                           onClick={(e) => {
                             e.stopPropagation();
@@ -563,7 +664,7 @@ export function ListViewDesignerPage() {
                           }}
                         >
                           Remove
-                        </button>
+                        </Button>
                       </div>
                     </button>
                   </li>
@@ -575,34 +676,36 @@ export function ListViewDesignerPage() {
             <h3 className="builder-muted" style={{ fontSize: '0.8125rem', margin: '0 0 8px' }}>
               Header preview
             </h3>
-            <div style={{ overflowX: 'auto', border: '1px solid #e4e4e7', borderRadius: 8, background: '#fff' }}>
-              <table className="records-table" style={{ margin: 0, minWidth: 200 }}>
-                <thead>
-                  <tr>
-                    {showRecordId && <th>Id</th>}
+            <Table.ScrollContainer minWidth={200} type="scroll" style={{ borderRadius: 8 }}>
+              <Table withTableBorder withColumnBorders>
+                <Table.Thead>
+                  <Table.Tr>
+                    {showRecordId && <Table.Th>Id</Table.Th>}
                     {columns.map((c) => (
-                      <th key={c.fieldSlug}>
+                      <Table.Th key={c.fieldSlug}>
                         {c.label?.trim() || fields.find((f) => f.slug === c.fieldSlug)?.name || c.fieldSlug}
-                      </th>
+                      </Table.Th>
                     ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  <Table.Tr>
                     {showRecordId && (
-                      <td className="builder-muted">
-                        <code>…</code>
-                      </td>
+                      <Table.Td>
+                        <Code c="dimmed">…</Code>
+                      </Table.Td>
                     )}
                     {columns.map((c) => (
-                      <td key={c.fieldSlug} className="builder-muted">
-                        …
-                      </td>
+                      <Table.Td key={c.fieldSlug}>
+                        <Text span c="dimmed">
+                          …
+                        </Text>
+                      </Table.Td>
                     ))}
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+                  </Table.Tr>
+                </Table.Tbody>
+              </Table>
+            </Table.ScrollContainer>
           </div>
         </section>
 
@@ -613,86 +716,69 @@ export function ListViewDesignerPage() {
           {!selectedCol && <p className="builder-muted">Select a column in the list structure.</p>}
           {selectedCol && selectedIdx !== null && (
             <div style={{ display: 'grid', gap: 10 }}>
-              <label className="field-label">
-                Label override
-                <input
-                  className="input"
-                  value={selectedCol.label ?? ''}
-                  onChange={(e) => updateSelected({ label: e.target.value || undefined })}
-                  placeholder={fields.find((f) => f.slug === selectedCol.fieldSlug)?.name ?? ''}
-                  readOnly={!canSchemaWrite}
-                />
-              </label>
-              <label className="field-label">
-                Align
-                <select
-                  className="input"
-                  value={selectedCol.align ?? ''}
-                  onChange={(e) =>
-                    updateSelected({
-                      align: (e.target.value as 'left' | 'center' | 'right' | '') || undefined,
-                    })
+              <TextInput
+                label="Label override"
+                value={selectedCol.label ?? ''}
+                onChange={(e) => updateSelected({ label: e.target.value || undefined })}
+                placeholder={fields.find((f) => f.slug === selectedCol.fieldSlug)?.name ?? ''}
+                readOnly={!canSchemaWrite}
+              />
+              <Select
+                label="Align"
+                value={selectedCol.align ?? ''}
+                onChange={(v) =>
+                  updateSelected({
+                    align: (v as 'left' | 'center' | 'right' | '') || undefined,
+                  })
+                }
+                disabled={!canSchemaWrite}
+                data={[
+                  { value: '', label: 'Default' },
+                  { value: 'left', label: 'Left' },
+                  { value: 'center', label: 'Center' },
+                  { value: 'right', label: 'Right' },
+                ]}
+              />
+              <Select
+                label="Width hint"
+                value={
+                  typeof selectedCol.width === 'string'
+                    ? selectedCol.width
+                    : selectedCol.width === undefined
+                      ? ''
+                      : '__px__'
+                }
+                onChange={(v) => {
+                  if (v === '' || v === 'narrow' || v === 'medium' || v === 'wide') {
+                    updateSelected({ width: v || undefined });
                   }
-                  disabled={!canSchemaWrite}
-                >
-                  <option value="">Default</option>
-                  <option value="left">Left</option>
-                  <option value="center">Center</option>
-                  <option value="right">Right</option>
-                </select>
-              </label>
-              <label className="field-label">
-                Width hint
-                <select
-                  className="input"
-                  value={
-                    typeof selectedCol.width === 'string'
-                      ? selectedCol.width
-                      : selectedCol.width === undefined
-                        ? ''
-                        : '__px__'
-                  }
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    if (v === '' || v === 'narrow' || v === 'medium' || v === 'wide') {
-                      updateSelected({ width: v || undefined });
-                    }
-                  }}
-                  disabled={!canSchemaWrite}
-                >
-                  <option value="">Default</option>
-                  <option value="narrow">Narrow</option>
-                  <option value="medium">Medium</option>
-                  <option value="wide">Wide</option>
-                </select>
-              </label>
-              <label className="field-label row">
-                <input
-                  type="checkbox"
-                  checked={Boolean(selectedCol.inlineEditable)}
-                  onChange={(e) => updateSelected({ inlineEditable: e.target.checked })}
-                  disabled={!canSchemaWrite}
-                />
-                <span>Inline editable</span>
-              </label>
-              <label className="field-label row">
-                <input
-                  type="checkbox"
-                  checked={Boolean(selectedCol.linkToRecord)}
-                  onChange={(e) => updateSelected({ linkToRecord: e.target.checked })}
-                  disabled={!canSchemaWrite}
-                />
-                <span>Link to record detail</span>
-              </label>
-              <label className="field-label row">
-                <input
-                  type="checkbox"
-                  checked={selectedCol.visible !== false}
-                  onChange={(e) => updateSelected({ visible: e.target.checked })}
-                  disabled={!canSchemaWrite}
-                />
-                <span>Visible</span>
-              </label>
+                }}
+                disabled={!canSchemaWrite}
+                data={[
+                  { value: '', label: 'Default' },
+                  { value: 'narrow', label: 'Narrow' },
+                  { value: 'medium', label: 'Medium' },
+                  { value: 'wide', label: 'Wide' },
+                ]}
+              />
+              <Checkbox
+                checked={Boolean(selectedCol.inlineEditable)}
+                onChange={(e) => updateSelected({ inlineEditable: e.currentTarget.checked })}
+                disabled={!canSchemaWrite}
+                label="Inline editable"
+              />
+              <Checkbox
+                checked={Boolean(selectedCol.linkToRecord)}
+                onChange={(e) => updateSelected({ linkToRecord: e.currentTarget.checked })}
+                disabled={!canSchemaWrite}
+                label="Link to record detail"
+              />
+              <Checkbox
+                checked={selectedCol.visible !== false}
+                onChange={(e) => updateSelected({ visible: e.currentTarget.checked })}
+                disabled={!canSchemaWrite}
+                label="Visible"
+              />
             </div>
           )}
         </aside>

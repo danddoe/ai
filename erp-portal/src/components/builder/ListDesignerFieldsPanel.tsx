@@ -1,3 +1,4 @@
+import { Button, Group, Select, Text, TextInput } from '@mantine/core';
 import type { EntityFieldDto } from '../../api/schemas';
 import { useAuth } from '../../auth/AuthProvider';
 import {
@@ -16,6 +17,8 @@ type Props = {
   onOpenCreateField: () => void;
   onOpenEditField: (field: EntityFieldDto) => void;
   schemaWritable: boolean;
+  /** Create/edit field definitions (separate from list column layout). */
+  fieldDefinitionsWritable?: boolean;
 };
 
 function fieldOnList(columns: RecordListColumnDefinition[], slug: string): boolean {
@@ -33,8 +36,10 @@ export function ListDesignerFieldsPanel({
   onOpenCreateField,
   onOpenEditField,
   schemaWritable,
+  fieldDefinitionsWritable,
 }: Props) {
   const { canSchemaWrite } = useAuth();
+  const canMutateFields = fieldDefinitionsWritable ?? canSchemaWrite;
   const q = search.trim().toLowerCase();
   const filtered = fields.filter((f) => {
     if (q && !f.name.toLowerCase().includes(q) && !f.slug.toLowerCase().includes(q)) return false;
@@ -48,35 +53,40 @@ export function ListDesignerFieldsPanel({
     <aside className="builder-panel">
       <div className="builder-panel-header">
         <h2>Data dictionary</h2>
-        {canSchemaWrite && schemaWritable && (
-          <button type="button" className="btn btn-sm btn-secondary" onClick={onOpenCreateField}>
+        {canMutateFields && schemaWritable && (
+          <Button type="button" variant="default" size="sm" onClick={onOpenCreateField}>
             + New field
-          </button>
+          </Button>
         )}
       </div>
       <p className="builder-muted" style={{ marginBottom: 8, fontSize: '0.8125rem' }}>
         Click a field to add it as a table column. Reorder columns in the structure panel.
       </p>
-      <input
-        className="input builder-search"
+      <TextInput
+        className="builder-search"
         placeholder="Search fields…"
         value={search}
         onChange={(e) => onSearchChange(e.target.value)}
         aria-label="Search fields"
+        size="xs"
       />
-      <div className="builder-filter-row">
-        <span className="builder-filter-label">Show</span>
-        <select
-          className="input input-sm"
+      <Group wrap="nowrap" gap="xs" align="center" className="builder-filter-row">
+        <Text span size="xs" c="dimmed" className="builder-filter-label">
+          Show
+        </Text>
+        <Select
+          size="xs"
+          w={130}
+          data={[
+            { value: 'all', label: 'All' },
+            { value: 'on', label: 'On list' },
+            { value: 'off', label: 'Not on list' },
+          ]}
           value={filter}
-          onChange={(e) => onFilterChange(e.target.value as 'all' | 'on' | 'off')}
-        >
-          <option value="all">All</option>
-          <option value="on">On list</option>
-          <option value="off">Not on list</option>
-        </select>
-      </div>
-      {fields.length === 0 && canSchemaWrite && (
+          onChange={(v) => v && onFilterChange(v as 'all' | 'on' | 'off')}
+        />
+      </Group>
+      {fields.length === 0 && canMutateFields && (
         <p className="builder-muted" style={{ marginBottom: 8, fontSize: '0.875rem' }}>
           No schema fields yet. Use <strong>New field</strong> to add one.
         </p>
@@ -107,15 +117,16 @@ export function ListDesignerFieldsPanel({
                     <span className={`pill ${on ? 'pill-on' : 'pill-off'}`}>{on ? 'on list' : 'off'}</span>
                   </span>
                 </button>
-                {canSchemaWrite && (
-                  <button
+                {canMutateFields && (
+                  <Button
                     type="button"
-                    className="btn btn-sm btn-secondary"
+                    variant="default"
+                    size="xs"
                     onClick={() => onOpenEditField(f)}
                     aria-label={`Edit field ${f.name}`}
                   >
                     Edit
-                  </button>
+                  </Button>
                 )}
               </div>
             </li>

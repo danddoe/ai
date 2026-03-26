@@ -1,5 +1,6 @@
 package com.erp.entitybuilder.service.query;
 
+import com.erp.entitybuilder.config.PlatformTenantProperties;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
@@ -13,19 +14,19 @@ import java.util.UUID;
 public class RecordFilterQueryExecutor {
 
     private final RecordFilterSqlBuilder sqlBuilder;
+    private final PlatformTenantProperties platformTenantProperties;
 
     @PersistenceContext
     private EntityManager entityManager;
 
-    public RecordFilterQueryExecutor(RecordFilterSqlBuilder sqlBuilder) {
+    public RecordFilterQueryExecutor(RecordFilterSqlBuilder sqlBuilder, PlatformTenantProperties platformTenantProperties) {
         this.sqlBuilder = sqlBuilder;
+        this.platformTenantProperties = platformTenantProperties;
     }
 
     public long countMatching(UUID tenantId, UUID entityId, ResolvedFilter filter) {
-        StringBuilder where = new StringBuilder("er.tenant_id = ? AND er.entity_id = ?");
-        List<Object> params = new ArrayList<>();
-        params.add(tenantId);
-        params.add(entityId);
+        StringBuilder where = new StringBuilder(entityVisibilitySqlPrefix());
+        List<Object> params = visibilityParamsFirst(tenantId, entityId);
         if (filter != null) {
             where.append(" AND ");
             sqlBuilder.append(where, params, filter);
@@ -40,17 +41,41 @@ public class RecordFilterQueryExecutor {
         return Long.parseLong(single.toString());
     }
 
-    @SuppressWarnings("unchecked")
-    public List<UUID> findRecordIds(UUID tenantId, UUID entityId, ResolvedFilter filter, int offset, int limit) {
-        StringBuilder where = new StringBuilder("er.tenant_id = ? AND er.entity_id = ?");
+    private String entityVisibilitySqlPrefix() {
+        if (platformTenantProperties.isConfigured()) {
+            return "er.entity_id = ? AND (er.tenant_id = ? OR (er.record_scope = 'STANDARD_RECORD' AND er.tenant_id = ?))";
+        }
+        return "er.entity_id = ? AND er.tenant_id = ?";
+    }
+
+    private List<Object> visibilityParamsFirst(UUID requestTenantId, UUID entityId) {
         List<Object> params = new ArrayList<>();
-        params.add(tenantId);
         params.add(entityId);
+        params.add(requestTenantId);
+        if (platformTenantProperties.isConfigured()) {
+            params.add(platformTenantProperties.getTenantId());
+        }
+        return params;
+    }
+
+    @SuppressWarnings("unchecked")
+    public List<UUID> findRecordIds(
+            UUID tenantId,
+            UUID entityId,
+            ResolvedFilter filter,
+            int offset,
+            int limit,
+            String orderColumn,
+            boolean ascending
+    ) {
+        StringBuilder where = new StringBuilder(entityVisibilitySqlPrefix());
+        List<Object> params = visibilityParamsFirst(tenantId, entityId);
         if (filter != null) {
             where.append(" AND ");
             sqlBuilder.append(where, params, filter);
         }
-        String sql = "SELECT er.id FROM entity_records er WHERE " + where + " ORDER BY er.updated_at DESC LIMIT ? OFFSET ?";
+        String dir = ascending ? "ASC" : "DESC";
+        String sql = "SELECT er.id FROM entity_records er WHERE " + where + " ORDER BY " + orderColumn + " " + dir + " LIMIT ? OFFSET ?";
         params.add(limit);
         params.add(offset);
         Query q = entityManager.createNativeQuery(sql);

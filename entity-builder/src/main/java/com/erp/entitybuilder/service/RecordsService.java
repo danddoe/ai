@@ -5,8 +5,11 @@ import com.erp.audit.AuditEvent;
 import com.erp.audit.AuditLogWriter;
 import com.erp.audit.AuditOperations;
 import com.erp.audit.AuditResourceTypes;
+import com.erp.entitybuilder.catalog.EntityStatusCatalogConstants;
+import com.erp.entitybuilder.config.PlatformTenantProperties;
 import com.erp.entitybuilder.domain.*;
 import com.erp.entitybuilder.repository.*;
+import com.erp.entitybuilder.security.EntityBuilderSecurity;
 import com.erp.entitybuilder.service.query.RecordFilterQueryExecutor;
 import com.erp.entitybuilder.service.query.RecordFilterValidator;
 import com.erp.entitybuilder.service.query.ResolvedFilter;
@@ -15,6 +18,7 @@ import com.erp.entitybuilder.service.search.SearchLikeEscape;
 import com.erp.entitybuilder.service.storage.FieldStorage;
 import com.erp.entitybuilder.security.TenantPrincipal;
 import com.erp.entitybuilder.web.ApiException;
+import com.erp.entitybuilder.web.RequestLocaleResolver;
 import com.erp.entitybuilder.web.v1.dto.RecordDtos;
 import com.erp.entitybuilder.web.v1.dto.RecordQueryDtos;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -27,6 +31,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.math.BigDecimal;
 import java.security.MessageDigest;
@@ -56,6 +62,12 @@ public class RecordsService {
     private final RecordFilterQueryExecutor recordFilterQueryExecutor;
     private final AuditLogWriter auditLogWriter;
     private final DocumentNumberGenerationService documentNumberGenerationService;
+    private final RecordUserLabelLookup recordUserLabelLookup;
+    private final EntitySchemaService entitySchemaService;
+    private final PlatformTenantProperties platformTenantProperties;
+    private final EntityBuilderSecurity entityBuilderSecurity;
+    private final EntityStatusLabelService entityStatusLabelService;
+    private final EntityStatusAssignmentRepository entityStatusAssignmentRepository;
 
     private final ObjectMapper canonicalMapper;
     private final ObjectMapper responseMapper;
@@ -74,6 +86,12 @@ public class RecordsService {
             RecordFilterValidator recordFilterValidator,
             RecordFilterQueryExecutor recordFilterQueryExecutor,
             DocumentNumberGenerationService documentNumberGenerationService,
+            RecordUserLabelLookup recordUserLabelLookup,
+            EntitySchemaService entitySchemaService,
+            PlatformTenantProperties platformTenantProperties,
+            EntityBuilderSecurity entityBuilderSecurity,
+            EntityStatusLabelService entityStatusLabelService,
+            EntityStatusAssignmentRepository entityStatusAssignmentRepository,
             @Autowired(required = false) AuditLogWriter auditLogWriter
     ) {
         this.entityRepository = entityRepository;
@@ -89,6 +107,12 @@ public class RecordsService {
         this.recordFilterValidator = recordFilterValidator;
         this.recordFilterQueryExecutor = recordFilterQueryExecutor;
         this.documentNumberGenerationService = documentNumberGenerationService;
+        this.recordUserLabelLookup = recordUserLabelLookup;
+        this.entitySchemaService = entitySchemaService;
+        this.platformTenantProperties = platformTenantProperties;
+        this.entityBuilderSecurity = entityBuilderSecurity;
+        this.entityStatusLabelService = entityStatusLabelService;
+        this.entityStatusAssignmentRepository = entityStatusAssignmentRepository;
         this.auditLogWriter = auditLogWriter;
 
         this.canonicalMapper = new ObjectMapper();
@@ -111,15 +135,17 @@ public class RecordsService {
     ) {
         Objects.requireNonNull(values, "values required");
 
-        EntityDefinition entity = entityRepository.findById(entityId)
-                .filter(e -> tenantId.equals(e.getTenantId()))
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "not_found", "Entity not found"));
+        EntityDefinition entity = entitySchemaService.resolveEntityForTenantAccess(tenantId, entityId);
 
         List<EntityField> fields = fieldRepository.findByEntityId(entityId);
         Map<String, EntityField> fieldBySlug = new HashMap<>();
         for (EntityField f : fields) {
             fieldBySlug.put(f.getSlug(), f);
         }
+
+        Map<String, Object> effectiveValues = new LinkedHashMap<>(values);
+        applyOptimisticVersionDefaultOnCreate(effectiveValues, fields);
+        values = effectiveValues;
 
         for (String providedSlug : values.keySet()) {
             if (!fieldBySlug.containsKey(providedSlug)) {
@@ -134,7 +160,8 @@ public class RecordsService {
         }
 
         for (EntityField f : fields) {
-            if (!f.isRequired() || FieldStorage.isCoreDomain(f) || FieldTypes.isDocumentNumber(f)) {
+            if (!f.isRequired() || FieldStorage.isCoreDomain(f) || FieldTypes.isDocumentNumber(f)
+                    || FieldTypes.isOptimisticVersionField(f)) {
                 continue;
             }
             if (!values.containsKey(f.getSlug()) || values.get(f.getSlug()) == null) {
@@ -186,6 +213,7 @@ public class RecordsService {
         record.setBusinessDocumentNumber(bdn);
         record.setCreatedBy(userId);
         record.setStatus("ACTIVE");
+        record.setRecordScope(RecordScope.TENANT_RECORD);
         record = recordRepository.save(record);
         UUID recordId = record.getId();
 
@@ -247,40 +275,7 @@ public class RecordsService {
         // Save record links (if any)
         if (links != null) {
             for (LinkInput link : links) {
-                EntityRelationship rel = relationshipRepository.findByTenantIdAndSlug(tenantId, link.relationshipSlug())
-                        .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "not_found", "Relationship not found", Map.of("relationshipSlug", link.relationshipSlug())));
-                // from side must match entity
-                if (!rel.getFromEntityId().equals(entityId)) {
-                    throw new ApiException(HttpStatus.BAD_REQUEST, "bad_request", "Relationship is not valid for this entity", Map.of("relationshipSlug", link.relationshipSlug()));
-                }
-                UUID toRecordId = link.toRecordId();
-                EntityRecord toRecord = recordRepository.findById(toRecordId)
-                        .filter(r -> tenantId.equals(r.getTenantId()))
-                        .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "not_found", "Target record not found", Map.of("toRecordId", toRecordId)));
-
-                if (!toRecord.getEntityId().equals(rel.getToEntityId())) {
-                    throw new ApiException(HttpStatus.BAD_REQUEST, "bad_request", "Relationship target entity mismatch");
-                }
-
-                if ("one-to-one".equalsIgnoreCase(rel.getCardinality())) {
-                    Optional<RecordLink> existingLink = linkRepository.findFirstByTenantIdAndFromRecordIdAndRelationshipId(tenantId, recordId, rel.getId());
-                    if (existingLink.isPresent()) {
-                        RecordLink l = existingLink.get();
-                        if (!l.getToRecordId().equals(toRecordId)) {
-                            throw new ApiException(HttpStatus.CONFLICT, "conflict", "one-to-one relationship already has a linked record");
-                        }
-                        // else same target is idempotent for this link
-                    }
-                }
-
-                if (!linkRepository.existsByTenantIdAndFromRecordIdAndRelationshipIdAndToRecordId(tenantId, recordId, rel.getId(), toRecordId)) {
-                    RecordLink rl = new RecordLink();
-                    rl.setTenantId(tenantId);
-                    rl.setFromRecordId(recordId);
-                    rl.setToRecordId(toRecordId);
-                    rl.setRelationshipId(rel.getId());
-                    linkRepository.save(rl);
-                }
+                upsertLinkStrict(tenantId, recordId, entityId, link, true);
             }
         }
 
@@ -321,7 +316,7 @@ public class RecordsService {
     @Transactional(readOnly = true)
     public RecordResponse getRecord(UUID tenantId, UUID recordId, boolean piiReadPermission) {
         EntityRecord record = recordRepository.findById(recordId)
-                .filter(r -> tenantId.equals(r.getTenantId()))
+                .filter(r -> recordVisibleToTenant(r, tenantId))
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "not_found", "Record not found"));
 
         return toResponse(record.getId(), tenantId, piiReadPermission);
@@ -332,7 +327,7 @@ public class RecordsService {
         if (externalId == null || externalId.isBlank()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "bad_request", "externalId required");
         }
-        EntityRecord record = recordRepository.findByTenantIdAndEntityIdAndExternalId(tenantId, entityId, externalId.trim())
+        EntityRecord record = findRecordByExternalId(tenantId, entityId, externalId.trim())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "not_found", "Record not found"));
         return toResponse(record.getId(), tenantId, piiReadPermission);
     }
@@ -342,18 +337,49 @@ public class RecordsService {
         if (businessDocumentNumber == null || businessDocumentNumber.isBlank()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "bad_request", "businessDocumentNumber required");
         }
-        EntityRecord record = recordRepository.findByTenantIdAndEntityIdAndBusinessDocumentNumber(tenantId, entityId, businessDocumentNumber.trim())
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "not_found", "Record not found"));
-        return toResponse(record.getId(), tenantId, piiReadPermission);
+        String bdn = businessDocumentNumber.trim();
+        Optional<EntityRecord> record = recordRepository.findByTenantIdAndEntityIdAndBusinessDocumentNumber(tenantId, entityId, bdn);
+        if (record.isEmpty() && platformTenantProperties.isConfigured()) {
+            record = recordRepository.findByTenantIdAndEntityIdAndBusinessDocumentNumber(platformTenantProperties.getTenantId(), entityId, bdn);
+        }
+        return toResponse(record.orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "not_found", "Record not found")).getId(), tenantId, piiReadPermission);
     }
 
     @Transactional(readOnly = true)
-    public PageResult listRecords(UUID tenantId, UUID entityId, int page, int pageSize, boolean piiReadPermission) {
+    public PageResult listRecords(
+            UUID tenantId,
+            UUID entityId,
+            int page,
+            int pageSize,
+            boolean piiReadPermission,
+            UUID assignedForEntityId,
+            UUID assignedForEntityFieldId
+    ) {
+        entitySchemaService.resolveEntityForTenantAccess(tenantId, entityId);
         // page is 1-based in the API layer
         int pageIndex = Math.max(0, page - 1);
         int size = clampPageSize(pageSize);
+        var pageable = org.springframework.data.domain.PageRequest.of(pageIndex, size);
 
-        var p = recordRepository.findByTenantIdAndEntityId(tenantId, entityId, org.springframework.data.domain.PageRequest.of(pageIndex, size));
+        List<UUID> assignedRecordIds = resolveAssignedStatusRecordIdsOrNull(
+                tenantId, assignedForEntityId, assignedForEntityFieldId);
+        List<UUID> listEntityIds = entityIdsForEntityStatusMirrorList(entityId);
+
+        org.springframework.data.domain.Page<EntityRecord> p;
+        if (assignedRecordIds != null) {
+            if (platformTenantProperties.isConfigured()) {
+                p = recordRepository.findVisibleByEntityIdInAndIdOrStatusIdIn(
+                        listEntityIds, tenantId, platformTenantProperties.getTenantId(), assignedRecordIds, pageable);
+            } else {
+                p = recordRepository.findByTenantIdAndEntityIdInAndIdOrStatusIdIn(
+                        tenantId, listEntityIds, assignedRecordIds, pageable);
+            }
+        } else if (platformTenantProperties.isConfigured()) {
+            p = recordRepository.findVisibleByEntityIdIn(
+                    listEntityIds, tenantId, platformTenantProperties.getTenantId(), pageable);
+        } else {
+            p = recordRepository.findByTenantIdAndEntityIdIn(tenantId, listEntityIds, pageable);
+        }
         List<RecordDtos.RecordDto> items = p.getContent().stream()
                 .map(r -> toResponse(r.getId(), tenantId, piiReadPermission).getRecordDto())
                 .toList();
@@ -370,9 +396,7 @@ public class RecordsService {
             RecordQueryDtos.RecordQueryRequest request,
             boolean piiReadPermission
     ) {
-        entityRepository.findById(entityId)
-                .filter(e -> tenantId.equals(e.getTenantId()))
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "not_found", "Entity not found"));
+        entitySchemaService.resolveEntityForTenantAccess(tenantId, entityId);
 
         List<EntityField> fields = fieldRepository.findByEntityId(entityId);
         ResolvedFilter resolved = recordFilterValidator.validate(request.getFilter(), fields, piiReadPermission);
@@ -380,11 +404,30 @@ public class RecordsService {
         int pageIndex = Math.max(0, request.getPage() - 1);
         int size = clampPageSize(request.getPageSize());
         long total = recordFilterQueryExecutor.countMatching(tenantId, entityId, resolved);
-        List<UUID> ids = recordFilterQueryExecutor.findRecordIds(tenantId, entityId, resolved, pageIndex * size, size);
+        RecordQueryDtos.RecordSort sort = request.getSort();
+        String orderColumn = resolveRecordSortColumn(sort);
+        boolean ascending = sort != null && "asc".equalsIgnoreCase(sort.getDirection());
+        List<UUID> ids = recordFilterQueryExecutor.findRecordIds(
+                tenantId, entityId, resolved, pageIndex * size, size, orderColumn, ascending);
         List<RecordDtos.RecordDto> items = ids.stream()
                 .map(id -> toResponse(id, tenantId, piiReadPermission).getRecordDto())
                 .toList();
         return new PageResult(items, request.getPage(), size, total);
+    }
+
+    private static String resolveRecordSortColumn(RecordQueryDtos.RecordSort sort) {
+        if (sort == null || sort.getField() == null || sort.getField().isBlank()) {
+            return "er.updated_at";
+        }
+        String f = sort.getField().trim().toLowerCase(Locale.ROOT);
+        if ("record.updated_at".equals(f)) {
+            return "er.updated_at";
+        }
+        if ("record.created_at".equals(f)) {
+            return "er.created_at";
+        }
+        throw new ApiException(HttpStatus.BAD_REQUEST, "bad_request", "Invalid sort field",
+                Map.of("field", sort.getField(), "allowed", "record.updated_at, record.created_at"));
     }
 
     @Transactional
@@ -399,16 +442,47 @@ public class RecordsService {
             UUID correlationId
     ) {
         EntityRecord record = recordRepository.findById(recordId)
-                .filter(r -> tenantId.equals(r.getTenantId()))
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "not_found", "Record not found"));
         if (!record.getEntityId().equals(entityId)) {
             throw new ApiException(HttpStatus.NOT_FOUND, "not_found", "Record not found");
         }
+        if (!recordVisibleToTenant(record, tenantId)) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "not_found", "Record not found");
+        }
+        if (record.getRecordScope() == RecordScope.STANDARD_RECORD && !entityBuilderSecurity.canWriteFullSchema()) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "forbidden", "Cannot modify platform catalog records");
+        }
+        UUID valueTenantId = record.getTenantId();
 
         if (values == null) values = Map.of();
         List<EntityField> fields = fieldRepository.findByEntityId(entityId);
         Map<String, EntityField> fieldBySlug = new HashMap<>();
         for (EntityField f : fields) fieldBySlug.put(f.getSlug(), f);
+
+        EntityField optimisticVersionField = null;
+        for (EntityField f : fields) {
+            if (FieldTypes.isOptimisticVersionField(f)) {
+                optimisticVersionField = f;
+                break;
+            }
+        }
+
+        Map<String, Object> valuesToApply = new LinkedHashMap<>(values);
+        BigDecimal versionAfterUpdate = null;
+        if (optimisticVersionField != null) {
+            BigDecimal currentVersion = readOptimisticVersion(valueRepository, recordId, optimisticVersionField.getId());
+            String versionSlug = optimisticVersionField.getSlug();
+            if (valuesToApply.containsKey(versionSlug)) {
+                BigDecimal submitted = coerceToBigDecimal(valuesToApply.get(versionSlug));
+                if (submitted.compareTo(currentVersion) != 0) {
+                    throw new ApiException(HttpStatus.CONFLICT, "version_conflict",
+                            "Record version mismatch (expected " + currentVersion.toPlainString() + ", got " + submitted.toPlainString() + ")",
+                            Map.of("field", versionSlug, "currentVersion", currentVersion, "submittedVersion", submitted));
+                }
+                valuesToApply.remove(versionSlug);
+            }
+            versionAfterUpdate = currentVersion.add(BigDecimal.ONE);
+        }
 
         Map<String, Object> auditBeforeValues = Map.of();
         List<Map<String, Object>> auditBeforeLinks = List.of();
@@ -416,10 +490,10 @@ public class RecordsService {
         boolean willAuditValues = !values.isEmpty();
         if (auditLogWriter != null && (willAuditValues || willAuditLinks)) {
             if (willAuditValues) {
-                auditBeforeValues = collectAuditValuesForSlugs(recordId, tenantId, values.keySet(), fieldBySlug);
+                auditBeforeValues = collectAuditValuesForSlugs(recordId, valueTenantId, values.keySet(), fieldBySlug);
             }
             if (willAuditLinks) {
-                auditBeforeLinks = auditLinkSnapshot(tenantId, recordId);
+                auditBeforeLinks = auditLinkSnapshot(valueTenantId, recordId);
             }
         }
 
@@ -438,10 +512,13 @@ public class RecordsService {
                         "document_number field is managed on the record; omit from values",
                         Map.of("field", providedSlug));
             }
+            if (FieldTypes.isOptimisticVersionField(cf)) {
+                continue;
+            }
         }
 
         // Apply field updates (partial merge)
-        for (var e : values.entrySet()) {
+        for (var e : valuesToApply.entrySet()) {
             String slug = e.getKey();
             Object rawValue = e.getValue();
             EntityField f = fieldBySlug.get(slug);
@@ -464,7 +541,7 @@ public class RecordsService {
             if (rawValue == null) {
                 valueRepository.save(rv);
                 if (f.isPii()) {
-                    piiVaultRepository.findByTenantIdAndRecordIdAndFieldId(tenantId, recordId, fieldId)
+                    piiVaultRepository.findByTenantIdAndRecordIdAndFieldId(valueTenantId, recordId, fieldId)
                             .ifPresent(p -> piiVaultRepository.delete(p));
                 }
                 continue;
@@ -474,10 +551,10 @@ public class RecordsService {
                 String plain = String.valueOf(rawValue);
                 PiiCrypto.EncryptedValue enc = piiCrypto.encrypt(plain);
 
-                PiiVaultEntry p = piiVaultRepository.findByTenantIdAndRecordIdAndFieldId(tenantId, recordId, fieldId)
+                PiiVaultEntry p = piiVaultRepository.findByTenantIdAndRecordIdAndFieldId(valueTenantId, recordId, fieldId)
                         .orElseGet(() -> {
                             PiiVaultEntry x = new PiiVaultEntry();
-                            x.setTenantId(tenantId);
+                            x.setTenantId(valueTenantId);
                             x.setRecordId(recordId);
                             x.setFieldId(fieldId);
                             return x;
@@ -492,9 +569,14 @@ public class RecordsService {
             }
         }
 
+        if (optimisticVersionField != null) {
+            writeOptimisticVersionValue(recordId, optimisticVersionField.getId(), versionAfterUpdate);
+        }
+
         // Enforce required non-null after merge (EAV fields only)
         for (EntityField f : fields) {
-            if (!f.isRequired() || FieldStorage.isCoreDomain(f) || FieldTypes.isDocumentNumber(f)) {
+            if (!f.isRequired() || FieldStorage.isCoreDomain(f) || FieldTypes.isDocumentNumber(f)
+                    || FieldTypes.isOptimisticVersionField(f)) {
                 continue;
             }
             UUID fieldId = f.getId();
@@ -529,7 +611,7 @@ public class RecordsService {
 
         // Links replace semantics
         if (links != null) {
-            linkRepository.deleteByTenantIdAndFromRecordId(tenantId, recordId);
+            linkRepository.deleteByTenantIdAndFromRecordId(valueTenantId, recordId);
             for (LinkInput link : links) {
                 upsertLinkStrict(tenantId, recordId, entityId, link, true);
             }
@@ -547,6 +629,9 @@ public class RecordsService {
             }
         }
 
+        record.setUpdatedBy(userId);
+        recordRepository.save(record);
+
         return toResponse(recordId, tenantId, piiReadPermission);
     }
 
@@ -557,11 +642,11 @@ public class RecordsService {
             String term,
             int limit,
             List<String> displaySlugs,
-            boolean piiReadPermission
+            boolean piiReadPermission,
+            UUID assignedForEntityId,
+            UUID assignedForEntityFieldId
     ) {
-        entityRepository.findById(entityId)
-                .filter(e -> tenantId.equals(e.getTenantId()))
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "not_found", "Entity not found"));
+        entitySchemaService.resolveEntityForTenantAccess(tenantId, entityId);
 
         if (term == null || term.isBlank() || term.trim().length() < 2) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "bad_request", "term must be at least 2 characters");
@@ -569,7 +654,23 @@ public class RecordsService {
 
         int lim = limit <= 0 ? 20 : Math.min(limit, 50);
         String pattern = "%" + SearchLikeEscape.escapeLikePattern(term.trim()) + "%";
-        List<UUID> ids = recordRepository.findIdsForSearchLookup(tenantId, entityId, pattern, lim);
+        List<UUID> assignedRecordIds = resolveAssignedStatusRecordIdsOrNull(
+                tenantId, assignedForEntityId, assignedForEntityFieldId);
+        List<UUID> listEntityIds = entityIdsForEntityStatusMirrorList(entityId);
+        List<UUID> ids;
+        if (assignedRecordIds != null) {
+            if (platformTenantProperties.isConfigured()) {
+                ids = recordRepository.findIdsForSearchLookupVisibleAssigned(
+                        tenantId, listEntityIds, pattern, lim, platformTenantProperties.getTenantId(), assignedRecordIds);
+            } else {
+                ids = recordRepository.findIdsForSearchLookupAssigned(tenantId, listEntityIds, pattern, lim, assignedRecordIds);
+            }
+        } else if (platformTenantProperties.isConfigured()) {
+            ids = recordRepository.findIdsForSearchLookupVisible(
+                    tenantId, listEntityIds, pattern, lim, platformTenantProperties.getTenantId());
+        } else {
+            ids = recordRepository.findIdsForSearchLookup(tenantId, listEntityIds, pattern, lim);
+        }
 
         EntityDefinition entityDef = entityRepository.findById(entityId).orElseThrow();
         List<EntityField> fields = fieldRepository.findByEntityId(entityId);
@@ -605,21 +706,77 @@ public class RecordsService {
                     continue;
                 }
                 EntityRecordValue v = byFieldId.get(f.getId());
-                valueMap.put(slug, decodeValue(f, v, tenantId, rid, piiReadPermission));
+                UUID rowTenant = recordRepository.findById(rid).map(EntityRecord::getTenantId).orElse(tenantId);
+                valueMap.put(slug, decodeValue(f, v, rowTenant, rid, piiReadPermission));
             }
 
-            String displayLabel = resolveDisplayLabel(entityDef, fields, byFieldId, tenantId, rid, piiReadPermission);
+            UUID rowTenant = recordRepository.findById(rid).map(EntityRecord::getTenantId).orElse(tenantId);
+            String displayLabel = resolveDisplayLabel(entityDef, fields, byFieldId, rowTenant, rid, piiReadPermission);
             items.add(new RecordDtos.RecordLookupItemDto(rid, displayLabel, valueMap));
         }
 
         return new RecordDtos.RecordLookupResponse(items);
     }
 
+    /**
+     * Resolves assigned status ids for list/lookup filtering. Field-scoped rows win when non-empty; otherwise
+     * entity-definition scope; when both are empty or unavailable, {@code null} (no extra filter).
+     */
+    private List<UUID> resolveAssignedStatusRecordIdsOrNull(
+            UUID tenantId,
+            UUID assignedForEntityId,
+            UUID assignedForEntityFieldId
+    ) {
+        if (assignedForEntityFieldId != null) {
+            List<UUID> fieldIds = entityStatusAssignmentRepository.findEntityStatusIdsByTenantIdAndAssignmentScopeAndScopeId(
+                    tenantId, AssignmentScope.ENTITY_FIELD, assignedForEntityFieldId);
+            if (!fieldIds.isEmpty()) {
+                return fieldIds;
+            }
+        }
+        if (assignedForEntityId == null) {
+            return null;
+        }
+        List<UUID> entIds = entityStatusAssignmentRepository.findEntityStatusIdsByTenantIdAndAssignmentScopeAndScopeId(
+                tenantId, AssignmentScope.ENTITY_DEFINITION, assignedForEntityId);
+        return entIds.isEmpty() ? null : entIds;
+    }
+
+    /**
+     * Platform-seeded {@code entity_status} mirror rows use the platform tenant's entity definition id. Each tenant
+     * also has its own {@code entities} row for slug {@code entity_status} (different primary key). Listing by the
+     * request entity id alone would miss STANDARD_RECORD mirrors; include both ids when slug matches.
+     */
+    private List<UUID> entityIdsForEntityStatusMirrorList(UUID entityId) {
+        EntityDefinition def = entityRepository.findById(entityId).orElse(null);
+        if (def == null) {
+            return List.of(entityId);
+        }
+        if (!EntityStatusCatalogConstants.SLUG.equals(def.getSlug())) {
+            return List.of(entityId);
+        }
+        LinkedHashSet<UUID> ids = new LinkedHashSet<>();
+        ids.add(entityId);
+        if (platformTenantProperties.isConfigured()) {
+            UUID pt = platformTenantProperties.getTenantId();
+            entityRepository.findByTenantIdAndSlug(pt, EntityStatusCatalogConstants.SLUG)
+                    .map(EntityDefinition::getId)
+                    .ifPresent(ids::add);
+        }
+        return new ArrayList<>(ids);
+    }
+
     @Transactional
     public void deleteRecord(UUID tenantId, UUID userId, UUID entityId, UUID recordId, UUID correlationId) {
         EntityRecord record = recordRepository.findById(recordId)
-                .filter(r -> tenantId.equals(r.getTenantId()) && entityId.equals(r.getEntityId()))
+                .filter(r -> entityId.equals(r.getEntityId()))
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "not_found", "Record not found"));
+        if (!recordVisibleToTenant(record, tenantId)) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "not_found", "Record not found");
+        }
+        if (record.getRecordScope() == RecordScope.STANDARD_RECORD && !entityBuilderSecurity.canWriteFullSchema()) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "forbidden", "Cannot delete platform catalog records");
+        }
         EntityDefinition entityDef = entityRepository.findById(entityId).orElse(null);
         List<EntityField> fields = fieldRepository.findByEntityId(entityId);
         Map<String, EntityField> fieldBySlug = new HashMap<>();
@@ -633,7 +790,7 @@ public class RecordsService {
                 ? auditLinkSnapshot(tenantId, recordId)
                 : List.of();
 
-        globalSearchIndexService.deleteEntityRecord(tenantId, recordId);
+        globalSearchIndexService.deleteEntityRecord(record.getTenantId(), recordId);
         recordRepository.delete(record);
 
         if (auditLogWriter != null && entityDef != null) {
@@ -643,9 +800,13 @@ public class RecordsService {
 
     @Transactional(readOnly = true)
     public LinksResult listLinks(UUID tenantId, UUID fromRecordId) {
-        List<RecordLink> links = linkRepository.findByTenantIdAndFromRecordId(tenantId, fromRecordId);
+        EntityRecord from = recordRepository.findById(fromRecordId)
+                .filter(r -> recordVisibleToTenant(r, tenantId))
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "not_found", "From record not found"));
+        UUID linkTenant = from.getTenantId();
+        List<RecordLink> links = linkRepository.findByTenantIdAndFromRecordId(linkTenant, fromRecordId);
         Map<UUID, EntityRelationship> relationshipsById = new HashMap<>();
-        for (EntityRelationship r : relationshipRepository.findByTenantId(tenantId)) relationshipsById.put(r.getId(), r);
+        for (EntityRelationship r : relationshipRepository.findByTenantId(linkTenant)) relationshipsById.put(r.getId(), r);
 
         List<com.erp.entitybuilder.web.v1.dto.RecordDtos.LinkDto> outLinks = new ArrayList<>();
         for (RecordLink l : links) {
@@ -658,7 +819,7 @@ public class RecordsService {
     @Transactional
     public void addLink(UUID tenantId, UUID userId, UUID fromRecordId, String relationshipSlug, UUID toRecordId, UUID correlationId) {
         EntityRecord fromRecord = recordRepository.findById(fromRecordId)
-                .filter(r -> tenantId.equals(r.getTenantId()))
+                .filter(r -> recordVisibleToTenant(r, tenantId))
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "not_found", "From record not found"));
         upsertLinkStrict(tenantId, fromRecordId, fromRecord.getEntityId(), new LinkInput(relationshipSlug, toRecordId), false);
         if (auditLogWriter != null) {
@@ -687,11 +848,11 @@ public class RecordsService {
     @Transactional
     public void deleteLink(UUID tenantId, UUID userId, UUID fromRecordId, String relationshipSlug, UUID toRecordId, UUID correlationId) {
         EntityRecord fromRecord = recordRepository.findById(fromRecordId)
-                .filter(r -> tenantId.equals(r.getTenantId()))
+                .filter(r -> recordVisibleToTenant(r, tenantId))
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "not_found", "From record not found"));
-        EntityRelationship rel = relationshipRepository.findByTenantIdAndSlug(tenantId, relationshipSlug)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "not_found", "Relationship not found", Map.of("relationshipSlug", relationshipSlug)));
-        RecordLink l = linkRepository.findByTenantIdAndFromRecordIdAndRelationshipIdAndToRecordId(tenantId, fromRecordId, rel.getId(), toRecordId)
+        UUID linkTenant = fromRecord.getTenantId();
+        EntityRelationship rel = resolveRelationshipForLink(linkTenant, relationshipSlug);
+        RecordLink l = linkRepository.findByTenantIdAndFromRecordIdAndRelationshipIdAndToRecordId(linkTenant, fromRecordId, rel.getId(), toRecordId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "not_found", "Link not found"));
         linkRepository.delete(l);
         if (auditLogWriter != null) {
@@ -717,11 +878,37 @@ public class RecordsService {
         }
     }
 
+    @Transactional
+    public void reindexRecordForSearch(UUID recordId, UUID entityId) {
+        recomputeSearchVector(recordId, entityId);
+    }
+
+    private boolean recordVisibleToTenant(EntityRecord r, UUID requestingTenantId) {
+        if (requestingTenantId.equals(r.getTenantId())) {
+            return true;
+        }
+        return r.getRecordScope() == RecordScope.STANDARD_RECORD
+                && platformTenantProperties.isConfigured()
+                && platformTenantProperties.getTenantId().equals(r.getTenantId());
+    }
+
+    private Optional<EntityRecord> findRecordByExternalId(UUID tenantId, UUID entityId, String externalId) {
+        Optional<EntityRecord> local = recordRepository.findByTenantIdAndEntityIdAndExternalId(tenantId, entityId, externalId);
+        if (local.isPresent()) {
+            return local;
+        }
+        if (platformTenantProperties.isConfigured()) {
+            return recordRepository.findByTenantIdAndEntityIdAndExternalId(platformTenantProperties.getTenantId(), entityId, externalId);
+        }
+        return Optional.empty();
+    }
+
     private RecordResponse toResponse(UUID recordId, UUID tenantId, boolean piiReadPermission) {
         EntityRecord record = recordRepository.findById(recordId)
-                .filter(r -> tenantId.equals(r.getTenantId()))
+                .filter(r -> recordVisibleToTenant(r, tenantId))
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "not_found", "Record not found"));
 
+        UUID storageTenantId = record.getTenantId();
         List<EntityField> fields = fieldRepository.findByEntityId(record.getEntityId());
         // Load value rows
         List<EntityRecordValue> values = valueRepository.findByRecordId(recordId);
@@ -738,14 +925,14 @@ public class RecordsService {
                 continue;
             }
             EntityRecordValue v = byFieldId.get(f.getId());
-            Object out = decodeValue(f, v, tenantId, recordId, piiReadPermission);
+            Object out = decodeValue(f, v, storageTenantId, recordId, piiReadPermission);
             outValues.put(f.getSlug(), out);
         }
 
         // Links
-        List<RecordLink> links = linkRepository.findByTenantIdAndFromRecordId(tenantId, recordId);
+        List<RecordLink> links = linkRepository.findByTenantIdAndFromRecordId(storageTenantId, recordId);
         Map<UUID, EntityRelationship> relationshipsById = new HashMap<>();
-        for (EntityRelationship r : relationshipRepository.findByTenantId(tenantId)) relationshipsById.put(r.getId(), r);
+        for (EntityRelationship r : relationshipRepository.findByTenantId(storageTenantId)) relationshipsById.put(r.getId(), r);
 
         List<com.erp.entitybuilder.web.v1.dto.RecordDtos.LinkDto> outLinks = new ArrayList<>();
         for (RecordLink l : links) {
@@ -754,6 +941,22 @@ public class RecordsService {
             outLinks.add(new com.erp.entitybuilder.web.v1.dto.RecordDtos.LinkDto(relationshipSlug, l.getToRecordId()));
         }
 
+        Set<UUID> labelIds = new HashSet<>();
+        if (record.getCreatedBy() != null) {
+            labelIds.add(record.getCreatedBy());
+        }
+        if (record.getUpdatedBy() != null) {
+            labelIds.add(record.getUpdatedBy());
+        }
+        Map<UUID, String> userLabels = recordUserLabelLookup.labelsFor(tenantId, labelIds);
+        String createdByLabel = record.getCreatedBy() != null ? userLabels.get(record.getCreatedBy()) : null;
+        String updatedByLabel = record.getUpdatedBy() != null ? userLabels.get(record.getUpdatedBy()) : null;
+
+        UUID esId = record.getEntityStatusId();
+        String esDisplay = esId != null
+                ? entityStatusLabelService.resolveDisplayLabel(esId, currentRequestLanguage())
+                : null;
+
         return new RecordResponse(new com.erp.entitybuilder.web.v1.dto.RecordDtos.RecordDto(
                 record.getId(),
                 record.getTenantId(),
@@ -761,12 +964,29 @@ public class RecordsService {
                 record.getExternalId(),
                 record.getBusinessDocumentNumber(),
                 record.getCreatedBy(),
+                record.getUpdatedBy(),
                 record.getStatus(),
                 outValues,
                 outLinks,
                 record.getCreatedAt(),
-                record.getUpdatedAt()
+                record.getUpdatedAt(),
+                createdByLabel,
+                updatedByLabel,
+                esId,
+                esDisplay
         ), outValues);
+    }
+
+    private static String currentRequestLanguage() {
+        try {
+            var attrs = RequestContextHolder.getRequestAttributes();
+            if (attrs instanceof ServletRequestAttributes servletRequestAttributes) {
+                return RequestLocaleResolver.resolveLanguage(servletRequestAttributes.getRequest());
+            }
+        } catch (Exception ignored) {
+            /* non-request thread */
+        }
+        return "en";
     }
 
     private Object decodeValue(EntityField f, EntityRecordValue v, UUID tenantId, UUID recordId, boolean piiReadPermission) {
@@ -787,10 +1007,13 @@ public class RecordsService {
     }
 
     private Object parseFromRecordValue(String fieldType, EntityRecordValue v) {
-        return switch (fieldType.toLowerCase(Locale.ROOT)) {
+        if (FieldTypes.isNumericFieldType(fieldType)) {
+            return v.getValueNumber();
+        }
+        String t = FieldTypes.normalizeSqlFieldType(fieldType);
+        return switch (t) {
             case "string", "text" -> v.getValueText();
-            case "number" -> v.getValueNumber();
-            case "date" -> v.getValueDate() != null ? v.getValueDate().toString() : null;
+            case "date", "datetime" -> v.getValueDate() != null ? v.getValueDate().toString() : null;
             case "boolean" -> v.getValueBoolean();
             case "reference" -> v.getValueReference();
             case "document_number" -> v.getValueText();
@@ -800,10 +1023,12 @@ public class RecordsService {
 
     private Object parseToFieldType(String fieldType, String plain) {
         if (plain == null) return null;
-        return switch (fieldType.toLowerCase(Locale.ROOT)) {
+        if (FieldTypes.isNumericFieldType(fieldType)) {
+            return new BigDecimal(plain);
+        }
+        return switch (FieldTypes.normalizeSqlFieldType(fieldType)) {
             case "string", "text" -> plain;
-            case "number" -> new BigDecimal(plain);
-            case "date" -> Instant.parse(plain);
+            case "date", "datetime" -> Instant.parse(plain);
             case "boolean" -> Boolean.parseBoolean(plain);
             case "reference" -> UUID.fromString(plain);
             case "document_number" -> plain;
@@ -812,13 +1037,14 @@ public class RecordsService {
     }
 
     private void applyTypedValue(EntityRecordValue rv, String fieldType, Object rawValue) {
-        switch (fieldType.toLowerCase(Locale.ROOT)) {
+        if (FieldTypes.isNumericFieldType(fieldType)) {
+            BigDecimal bd = rawValue instanceof Number ? new BigDecimal(rawValue.toString()) : new BigDecimal(String.valueOf(rawValue));
+            rv.setValueNumber(bd);
+            return;
+        }
+        switch (FieldTypes.normalizeSqlFieldType(fieldType)) {
             case "string", "text" -> rv.setValueText(String.valueOf(rawValue));
-            case "number" -> {
-                BigDecimal bd = rawValue instanceof Number ? new BigDecimal(rawValue.toString()) : new BigDecimal(String.valueOf(rawValue));
-                rv.setValueNumber(bd);
-            }
-            case "date" -> {
+            case "date", "datetime" -> {
                 String s = String.valueOf(rawValue);
                 Instant inst = Instant.parse(s);
                 rv.setValueDate(inst);
@@ -982,10 +1208,12 @@ public class RecordsService {
         if (v == null) {
             return null;
         }
-        String ft = fieldType.toLowerCase(Locale.ROOT);
+        if (FieldTypes.isNumericFieldType(fieldType)) {
+            return v.getValueNumber() != null ? v.getValueNumber().toPlainString() : null;
+        }
+        String ft = FieldTypes.normalizeSqlFieldType(fieldType);
         return switch (ft) {
             case "string", "text" -> v.getValueText();
-            case "number" -> v.getValueNumber() != null ? v.getValueNumber().toPlainString() : null;
             case "date", "datetime" -> v.getValueDate() != null ? v.getValueDate().toString() : null;
             case "boolean" -> v.getValueBoolean() != null ? v.getValueBoolean().toString() : null;
             case "reference" -> v.getValueReference() != null ? v.getValueReference().toString() : null;
@@ -1296,7 +1524,8 @@ public class RecordsService {
             } catch (Exception e) {
                 // If deserialize fails, return an empty but valid response.
                 return new RecordResponse(new com.erp.entitybuilder.web.v1.dto.RecordDtos.RecordDto(
-                        null, null, null, null, null, null, null, Map.of(), List.of(), null, null
+                        null, null, null, null, null, null, null, null, Map.of(), List.of(), null, null, null, null,
+                        null, null
                 ), Map.of());
             }
         }
@@ -1308,10 +1537,12 @@ public class RecordsService {
     }
 
     private boolean isValueNonNull(String fieldType, EntityRecordValue rv) {
-        return switch (fieldType.toLowerCase(Locale.ROOT)) {
+        if (FieldTypes.isNumericFieldType(fieldType)) {
+            return rv.getValueNumber() != null;
+        }
+        return switch (FieldTypes.normalizeSqlFieldType(fieldType)) {
             case "string", "text" -> rv.getValueText() != null;
-            case "number" -> rv.getValueNumber() != null;
-            case "date" -> rv.getValueDate() != null;
+            case "date", "datetime" -> rv.getValueDate() != null;
             case "boolean" -> rv.getValueBoolean() != null;
             case "reference" -> rv.getValueReference() != null;
             case "document_number" -> rv.getValueText() != null;
@@ -1391,21 +1622,73 @@ public class RecordsService {
         return out;
     }
 
-    private void upsertLinkStrict(UUID tenantId, UUID fromRecordId, UUID fromEntityId, LinkInput link, boolean allowIdempotent) {
-        EntityRelationship rel = relationshipRepository.findByTenantIdAndSlug(tenantId, link.relationshipSlug())
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "not_found", "Relationship not found", Map.of("relationshipSlug", link.relationshipSlug())));
+    private static void applyOptimisticVersionDefaultOnCreate(Map<String, Object> values, List<EntityField> fields) {
+        for (EntityField f : fields) {
+            if (!FieldTypes.isOptimisticVersionField(f)) {
+                continue;
+            }
+            if (!values.containsKey(f.getSlug()) || values.get(f.getSlug()) == null) {
+                values.put(f.getSlug(), BigDecimal.ZERO);
+            }
+        }
+    }
+
+    private static BigDecimal readOptimisticVersion(EntityRecordValueRepository valueRepository, UUID recordId, UUID fieldId) {
+        return valueRepository.findByRecordIdAndFieldId(recordId, fieldId)
+                .map(EntityRecordValue::getValueNumber)
+                .filter(Objects::nonNull)
+                .orElse(BigDecimal.ZERO);
+    }
+
+    private void writeOptimisticVersionValue(UUID recordId, UUID fieldId, BigDecimal version) {
+        EntityRecordValue rv = valueRepository.findByRecordIdAndFieldId(recordId, fieldId)
+                .orElseGet(() -> {
+                    EntityRecordValue x = new EntityRecordValue();
+                    x.setRecordId(recordId);
+                    x.setFieldId(fieldId);
+                    return x;
+                });
+        rv.setValueText(null);
+        rv.setValueNumber(version);
+        rv.setValueDate(null);
+        rv.setValueBoolean(null);
+        rv.setValueReference(null);
+        valueRepository.save(rv);
+    }
+
+    private static BigDecimal coerceToBigDecimal(Object raw) {
+        if (raw instanceof BigDecimal bd) {
+            return bd;
+        }
+        if (raw instanceof Number n) {
+            return new BigDecimal(n.toString());
+        }
+        return new BigDecimal(String.valueOf(raw).trim());
+    }
+
+    private void upsertLinkStrict(UUID requestingTenantId, UUID fromRecordId, UUID fromEntityId, LinkInput link, boolean allowIdempotent) {
+        EntityRecord fromRec = recordRepository.findById(fromRecordId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "not_found", "From record not found"));
+        if (!recordVisibleToTenant(fromRec, requestingTenantId)) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "not_found", "From record not found");
+        }
+        if (!fromEntityId.equals(fromRec.getEntityId())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "bad_request", "fromEntityId mismatch");
+        }
+        UUID linkTenant = fromRec.getTenantId();
+        EntityRelationship rel = resolveRelationshipForLink(linkTenant, link.relationshipSlug());
         if (!rel.getFromEntityId().equals(fromEntityId)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "bad_request", "Relationship is not valid for this entity", Map.of("relationshipSlug", link.relationshipSlug()));
         }
         EntityRecord toRecord = recordRepository.findById(link.toRecordId())
-                .filter(r -> tenantId.equals(r.getTenantId()))
+                .filter(r -> recordVisibleToTenant(r, requestingTenantId))
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "not_found", "Target record not found", Map.of("toRecordId", link.toRecordId())));
         if (!toRecord.getEntityId().equals(rel.getToEntityId())) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "bad_request", "Relationship target entity mismatch");
         }
 
         if ("one-to-one".equalsIgnoreCase(rel.getCardinality())) {
-            Optional<RecordLink> existingLink = linkRepository.findFirstByTenantIdAndFromRecordIdAndRelationshipId(tenantId, fromRecordId, rel.getId());
+            Optional<RecordLink> existingLink = linkRepository.findFirstByTenantIdAndFromRecordIdAndRelationshipId(linkTenant, fromRecordId, rel.getId());
             if (existingLink.isPresent()) {
                 RecordLink l = existingLink.get();
                 if (!l.getToRecordId().equals(link.toRecordId())) {
@@ -1416,14 +1699,26 @@ public class RecordsService {
             }
         }
 
-        if (!linkRepository.existsByTenantIdAndFromRecordIdAndRelationshipIdAndToRecordId(tenantId, fromRecordId, rel.getId(), link.toRecordId())) {
+        if (!linkRepository.existsByTenantIdAndFromRecordIdAndRelationshipIdAndToRecordId(linkTenant, fromRecordId, rel.getId(), link.toRecordId())) {
             RecordLink rl = new RecordLink();
-            rl.setTenantId(tenantId);
+            rl.setTenantId(linkTenant);
             rl.setFromRecordId(fromRecordId);
             rl.setToRecordId(link.toRecordId());
             rl.setRelationshipId(rel.getId());
             linkRepository.save(rl);
         }
+    }
+
+    private EntityRelationship resolveRelationshipForLink(UUID primaryTenantId, String relationshipSlug) {
+        Optional<EntityRelationship> rel = relationshipRepository.findByTenantIdAndSlug(primaryTenantId, relationshipSlug);
+        if (rel.isPresent()) {
+            return rel.get();
+        }
+        if (platformTenantProperties.isConfigured()) {
+            return relationshipRepository.findByTenantIdAndSlug(platformTenantProperties.getTenantId(), relationshipSlug)
+                    .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "not_found", "Relationship not found", Map.of("relationshipSlug", relationshipSlug)));
+        }
+        throw new ApiException(HttpStatus.NOT_FOUND, "not_found", "Relationship not found", Map.of("relationshipSlug", relationshipSlug));
     }
 }
 

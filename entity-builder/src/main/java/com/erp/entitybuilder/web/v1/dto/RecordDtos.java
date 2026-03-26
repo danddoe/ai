@@ -18,11 +18,16 @@ public class RecordDtos {
             String externalId,
             String businessDocumentNumber,
             UUID createdBy,
+            UUID updatedBy,
             String status,
             Map<String, Object> values,
             List<LinkDto> links,
             Instant createdAt,
-            Instant updatedAt
+            Instant updatedAt,
+            String createdByLabel,
+            String updatedByLabel,
+            UUID entityStatusId,
+            String entityStatusDisplayLabel
     ) {}
 
     public record RecordLookupItemDto(UUID recordId, String displayLabel, Map<String, Object> values) {}

@@ -55,6 +55,7 @@ class EntityFieldsE2ETest extends AbstractEntityBuilderE2ETest {
         String fieldId = String.valueOf(createResp.getBody().get("id"));
         assertThat(createResp.getBody().get("name")).isEqualTo("Price");
         assertThat(createResp.getBody().get("fieldType")).isEqualTo("number");
+        assertThat(createResp.getBody().get("definitionScope")).isEqualTo("TENANT_OBJECT");
 
         // List fields
         ResponseEntity<List> listResp = restTemplate.exchange(
@@ -64,8 +65,11 @@ class EntityFieldsE2ETest extends AbstractEntityBuilderE2ETest {
                 List.class
         );
         assertThat(listResp.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(listResp.getBody()).hasSize(1);
-        assertThat(((Map<?, ?>) listResp.getBody().get(0)).get("slug")).isEqualTo("price");
+        assertThat(listResp.getBody()).hasSize(2);
+        @SuppressWarnings("unchecked")
+        List<Map<?, ?>> fieldRows = (List<Map<?, ?>>) (List<?>) listResp.getBody();
+        List<String> slugs = fieldRows.stream().map(m -> String.valueOf(m.get("slug"))).toList();
+        assertThat(slugs).containsExactlyInAnyOrder("name", "price");
 
         // Get field
         ResponseEntity<Map> getResp = restTemplate.exchange(
@@ -76,6 +80,7 @@ class EntityFieldsE2ETest extends AbstractEntityBuilderE2ETest {
         );
         assertThat(getResp.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(getResp.getBody().get("slug")).isEqualTo("price");
+        assertThat(getResp.getBody().get("definitionScope")).isEqualTo("TENANT_OBJECT");
 
         // Update field (display format for clients, e.g. number pattern)
         Map<String, Object> update = new LinkedHashMap<>();
@@ -178,9 +183,12 @@ class EntityFieldsE2ETest extends AbstractEntityBuilderE2ETest {
                 List.class
         );
         assertThat(listResp.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(listResp.getBody()).hasSize(2);
-        assertThat(((Map<?, ?>) listResp.getBody().get(0)).get("slug")).isEqualTo("beta");
-        assertThat(((Map<?, ?>) listResp.getBody().get(1)).get("slug")).isEqualTo("alpha");
+        assertThat(listResp.getBody()).hasSize(3);
+        @SuppressWarnings("unchecked")
+        List<Map<?, ?>> rows = (List<Map<?, ?>>) (List<?>) listResp.getBody();
+        assertThat(rows.get(0).get("slug")).isEqualTo("beta");
+        assertThat(rows.get(1).get("slug")).isEqualTo("name");
+        assertThat(rows.get(2).get("slug")).isEqualTo("alpha");
 
         Map<String, Object> patchLabel = Map.of("labelOverride", "Alpha display");
         ResponseEntity<Map> patchResp = restTemplate.exchange(
@@ -191,6 +199,7 @@ class EntityFieldsE2ETest extends AbstractEntityBuilderE2ETest {
         );
         assertThat(patchResp.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(patchResp.getBody().get("labelOverride")).isEqualTo("Alpha display");
+        assertThat(patchResp.getBody().get("displayLabel")).isEqualTo("Alpha display");
 
         ResponseEntity<Map> getResp = restTemplate.exchange(
                 baseUrl + "/v1/entities/" + entityId + "/fields/" + alphaId,
@@ -200,6 +209,7 @@ class EntityFieldsE2ETest extends AbstractEntityBuilderE2ETest {
         );
         assertThat(getResp.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(getResp.getBody().get("labelOverride")).isEqualTo("Alpha display");
+        assertThat(getResp.getBody().get("displayLabel")).isEqualTo("Alpha display");
 
         Map<String, Object> clearLabel = Map.of("labelOverride", "");
         ResponseEntity<Map> clearResp = restTemplate.exchange(
@@ -210,5 +220,66 @@ class EntityFieldsE2ETest extends AbstractEntityBuilderE2ETest {
         );
         assertThat(clearResp.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(clearResp.getBody().get("labelOverride")).isNull();
+        assertThat(clearResp.getBody().get("displayLabel")).isEqualTo("Alpha");
+    }
+
+    @Test
+    void endToEnd_fieldLabels_putLocale_respectsAcceptLanguage() {
+        Assumptions.assumeTrue(jdbcTemplate != null, "E2E skipped: no CockroachDB connection");
+
+        UUID userId = UUID.randomUUID();
+        UUID tenantId = UUID.randomUUID();
+        var headers = authHeaders(userId, tenantId, SCHEMA_PERMS);
+
+        Map<String, Object> createEntity = Map.of("name", "Sku", "slug", "sku_i18n", "status", "ACTIVE");
+        ResponseEntity<Map> entityResp = restTemplate.exchange(
+                baseUrl + "/v1/entities",
+                HttpMethod.POST,
+                new HttpEntity<>(createEntity, headers),
+                Map.class
+        );
+        assertThat(entityResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        String entityId = String.valueOf(entityResp.getBody().get("id"));
+
+        Map<String, Object> createField = Map.of(
+                "name", "List price",
+                "slug", "list_price",
+                "fieldType", "number",
+                "required", false,
+                "pii", false
+        );
+        ResponseEntity<Map> fieldResp = restTemplate.exchange(
+                baseUrl + "/v1/entities/" + entityId + "/fields",
+                HttpMethod.POST,
+                new HttpEntity<>(createField, headers),
+                Map.class
+        );
+        assertThat(fieldResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        String fieldId = String.valueOf(fieldResp.getBody().get("id"));
+
+        HttpHeaders headersEs = authHeaders(userId, tenantId, SCHEMA_PERMS);
+        headersEs.set("Accept-Language", "es");
+        ResponseEntity<Map> putEs = restTemplate.exchange(
+                baseUrl + "/v1/entities/" + entityId + "/fields/" + fieldId + "/labels/es",
+                HttpMethod.PUT,
+                new HttpEntity<>(Map.of("label", "Precio lista"), headersEs),
+                Map.class
+        );
+        assertThat(putEs.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(putEs.getBody().get("displayLabel")).isEqualTo("Precio lista");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> labels = (Map<String, Object>) putEs.getBody().get("labels");
+        assertThat(labels.get("es")).isEqualTo("Precio lista");
+
+        HttpHeaders headersEn = authHeaders(userId, tenantId, SCHEMA_PERMS);
+        headersEn.set("Accept-Language", "en");
+        ResponseEntity<Map> getEn = restTemplate.exchange(
+                baseUrl + "/v1/entities/" + entityId + "/fields/" + fieldId,
+                HttpMethod.GET,
+                new HttpEntity<>(null, headersEn),
+                Map.class
+        );
+        assertThat(getEn.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(getEn.getBody().get("displayLabel")).isEqualTo("List price");
     }
 }

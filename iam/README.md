@@ -130,14 +130,14 @@ Flyway migrations in `src/main/resources/db/migration/`:
 - `tenants`, `users`, `tenant_users`, `roles`, `permissions`, `role_permissions`, `user_roles`, `refresh_tokens`, `audit_log`
 - Seed permissions in V7 and V8.
 
-**Optional bootstrap (local dev):** Run with profile `default-bootstrap` when the database has **no tenants** yet. This creates tenant **AI** (`slug` **`ai`**) and a **SUPERADMIN** user with every seeded permission (IAM + entity-builder, including `iam:superadmin`).
+**Optional bootstrap (local dev):** Run with profile `default-bootstrap` when the database has **no tenants** yet. This creates tenant **AI** (`slug` **`ai`**) and a **SUPERADMIN** user with every seeded permission (IAM + entity-builder, including `iam:superadmin`). It also creates a separate **system builder** user **`superai@unknownerp.com`** in the same tenant with the same **SUPERADMIN** role (same permissions). That user’s password defaults to **`SEED_SUPERADMIN_PASSWORD`** unless you set **`SEED_SUPERAI_PASSWORD`**.
 
 ```bash
 ./gradlew :iam:bootRun --args='--spring.profiles.active=default-bootstrap'
 .\gradlew.bat :iam:bootRun --args="--spring.profiles.active=default-bootstrap"
 ```
 
-After bootstrap, default **tenant** slug is **`ai`** and **email** **`superadmin@ai.com`**. The password is **only** what you set in **`SEED_SUPERADMIN_PASSWORD`** / **`app.bootstrap.admin-password`** (or Vault)—there is no default in the repository.
+After bootstrap, default **tenant** slug is **`ai`**, primary admin **email** **`superadmin@ai.com`**, and system builder **`superai@unknownerp.com`**. Passwords are **only** what you set in **`SEED_SUPERADMIN_PASSWORD`** / **`app.bootstrap.admin-password`** (and optionally **`SEED_SUPERAI_PASSWORD`** for the builder account) or Vault—there is no default in the repository.
 
 If login returns **“Tenant not found”**, no row matches that slug/UUID: either run bootstrap on an **empty** DB (`--spring.profiles.active=default-bootstrap`) or enter the slug of a tenant that already exists. Slugs like `default` only exist if you created them.
 

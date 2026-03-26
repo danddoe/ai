@@ -23,7 +23,11 @@ public class NavigationDtos {
             List<String> searchKeywords,
             List<String> requiredPermissions,
             List<String> requiredRoles,
-            @NotNull String scope
+            @NotNull String scope,
+            /** PUBLISHED or WIP; null defaults to PUBLISHED. */
+            String designStatus,
+            UUID linkedListViewId,
+            UUID linkedFormLayoutId
     ) {}
 
     public record NavigationItemCreatedDto(UUID id) {}
@@ -41,7 +45,10 @@ public class NavigationDtos {
             List<String> requiredPermissions,
             List<String> requiredRoles,
             Boolean active,
-            Boolean promoteToGlobal
+            Boolean promoteToGlobal,
+            String designStatus,
+            UUID linkedListViewId,
+            UUID linkedFormLayoutId
     ) {}
 
     public record NavigationItemDto(
@@ -55,6 +62,9 @@ public class NavigationDtos {
             String icon,
             String categoryKey,
             List<String> searchKeywords,
+            String designStatus,
+            UUID linkedListViewId,
+            UUID linkedFormLayoutId,
             List<NavigationItemDto> children
     ) {}
 
@@ -75,7 +85,10 @@ public class NavigationDtos {
             List<String> searchKeywords,
             List<String> requiredPermissions,
             List<String> requiredRoles,
-            boolean active
+            boolean active,
+            String designStatus,
+            UUID linkedListViewId,
+            UUID linkedFormLayoutId
     ) {}
 
     /** Flat hits for omnibox / Cmd+K (same RBAC visibility as full tree). */

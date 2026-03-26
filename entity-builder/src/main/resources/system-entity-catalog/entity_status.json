@@ -1,0 +1,213 @@
+{
+  "version" : 1,
+  "manifestKey" : "entity_status",
+  "entity" : {
+    "name" : "Entity status",
+    "slug" : "entity_status",
+    "categoryKey" : "master_data",
+    "description" : "Workflow / lifecycle status definitions (platform)",
+    "defaultDisplayFieldSlug" : "label"
+  },
+  "fields" : [ {
+    "name" : "Code",
+    "slug" : "code",
+    "sortOrder" : 10,
+    "fieldType" : "string",
+    "required" : true,
+    "pii" : false,
+    "config" : {
+      "storage" : "EAV_EXTENSION"
+    }
+  }, {
+    "name" : "Label",
+    "slug" : "label",
+    "sortOrder" : 20,
+    "fieldType" : "string",
+    "required" : true,
+    "pii" : false,
+    "config" : {
+      "storage" : "EAV_EXTENSION"
+    }
+  }, {
+    "name" : "Description",
+    "slug" : "description",
+    "sortOrder" : 30,
+    "fieldType" : "string",
+    "required" : false,
+    "pii" : false,
+    "config" : {
+      "storage" : "EAV_EXTENSION"
+    }
+  }, {
+    "name" : "Sort order",
+    "slug" : "sort_order",
+    "sortOrder" : 40,
+    "fieldType" : "number",
+    "required" : true,
+    "pii" : false,
+    "config" : {
+      "storage" : "EAV_EXTENSION"
+    }
+  }, {
+    "name" : "Category",
+    "slug" : "category",
+    "sortOrder" : 50,
+    "fieldType" : "string",
+    "required" : false,
+    "pii" : false,
+    "config" : {
+      "storage" : "EAV_EXTENSION"
+    }
+  }, {
+    "name" : "Is initial",
+    "slug" : "is_initial",
+    "sortOrder" : 60,
+    "fieldType" : "boolean",
+    "required" : true,
+    "pii" : false,
+    "config" : {
+      "storage" : "EAV_EXTENSION"
+    }
+  }, {
+    "name" : "Is terminal",
+    "slug" : "is_terminal",
+    "sortOrder" : 70,
+    "fieldType" : "boolean",
+    "required" : true,
+    "pii" : false,
+    "config" : {
+      "storage" : "EAV_EXTENSION"
+    }
+  }, {
+    "name" : "Is open",
+    "slug" : "is_open",
+    "sortOrder" : 80,
+    "fieldType" : "boolean",
+    "required" : true,
+    "pii" : false,
+    "config" : {
+      "storage" : "EAV_EXTENSION"
+    }
+  }, {
+    "name" : "Blocks edit",
+    "slug" : "blocks_edit",
+    "sortOrder" : 90,
+    "fieldType" : "boolean",
+    "required" : true,
+    "pii" : false,
+    "config" : {
+      "storage" : "EAV_EXTENSION"
+    }
+  }, {
+    "name" : "Blocks delete",
+    "slug" : "blocks_delete",
+    "sortOrder" : 100,
+    "fieldType" : "boolean",
+    "required" : true,
+    "pii" : false,
+    "config" : {
+      "storage" : "EAV_EXTENSION"
+    }
+  }, {
+    "name" : "Blocks post",
+    "slug" : "blocks_post",
+    "sortOrder" : 110,
+    "fieldType" : "boolean",
+    "required" : true,
+    "pii" : false,
+    "config" : {
+      "storage" : "EAV_EXTENSION"
+    }
+  }, {
+    "name" : "Is default",
+    "slug" : "is_default",
+    "sortOrder" : 120,
+    "fieldType" : "boolean",
+    "required" : true,
+    "pii" : false,
+    "config" : {
+      "storage" : "EAV_EXTENSION"
+    }
+  }, {
+    "name" : "Is system",
+    "slug" : "is_system",
+    "sortOrder" : 130,
+    "fieldType" : "boolean",
+    "required" : true,
+    "pii" : false,
+    "config" : {
+      "storage" : "EAV_EXTENSION"
+    }
+  }, {
+    "name" : "Is active",
+    "slug" : "is_active",
+    "sortOrder" : 140,
+    "fieldType" : "boolean",
+    "required" : true,
+    "pii" : false,
+    "config" : {
+      "storage" : "EAV_EXTENSION"
+    }
+  }, {
+    "name" : "Valid from",
+    "slug" : "valid_from",
+    "sortOrder" : 150,
+    "fieldType" : "date",
+    "required" : false,
+    "pii" : false,
+    "config" : {
+      "storage" : "EAV_EXTENSION"
+    }
+  }, {
+    "name" : "Valid to",
+    "slug" : "valid_to",
+    "sortOrder" : 160,
+    "fieldType" : "date",
+    "required" : false,
+    "pii" : false,
+    "config" : {
+      "storage" : "EAV_EXTENSION"
+    }
+  }, {
+    "name" : "Color",
+    "slug" : "color",
+    "sortOrder" : 170,
+    "fieldType" : "string",
+    "required" : false,
+    "pii" : false,
+    "config" : {
+      "storage" : "EAV_EXTENSION"
+    }
+  }, {
+    "name" : "Icon key",
+    "slug" : "icon_key",
+    "sortOrder" : 180,
+    "fieldType" : "string",
+    "required" : false,
+    "pii" : false,
+    "config" : {
+      "storage" : "EAV_EXTENSION"
+    }
+  }, {
+    "name" : "Metadata",
+    "slug" : "metadata",
+    "sortOrder" : 190,
+    "fieldType" : "string",
+    "required" : false,
+    "pii" : false,
+    "config" : {
+      "storage" : "EAV_EXTENSION"
+    }
+  }, {
+    "name" : "Parent status",
+    "slug" : "parent_status_id",
+    "sortOrder" : 200,
+    "fieldType" : "reference",
+    "required" : false,
+    "pii" : false,
+    "config" : {
+      "storage" : "EAV_EXTENSION",
+      "targetEntitySlug" : "entity_status"
+    }
+  } ]
+}

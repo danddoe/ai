@@ -1,6 +1,9 @@
 spring:
   application:
     name: entity-builder
+  messages:
+    basename: messages
+    encoding: UTF-8
   cloud:
     vault:
       uri: ${VAULT_ADDR:http://127.0.0.1:8200}
@@ -52,6 +55,9 @@ app:
     hmac-secret: ${JWT_SECRET:}
 
 entitybuilder:
+  platform:
+    # IAM bootstrap "ai" tenant UUID; required for entity-status provisioning and STANDARD_RECORD reads.
+    tenant-id: ${ENTITY_BUILDER_PLATFORM_TENANT_ID:}
   pii:
     key: ${PII_KEY:}
 

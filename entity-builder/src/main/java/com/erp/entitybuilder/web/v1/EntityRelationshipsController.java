@@ -29,7 +29,7 @@ public class EntityRelationshipsController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('entity_builder:schema:write')")
+    @PreAuthorize("@entityBuilderSecurity.canWriteTenantSchema()")
     public RelationshipDtos.RelationshipDto create(@Valid @RequestBody RelationshipDtos.CreateRelationshipRequest req) {
         UUID tenantId = SecurityUtil.principal().getTenantId();
         EntityRelationship r = relationshipService.create(
@@ -53,7 +53,7 @@ public class EntityRelationshipsController {
     }
 
     @PatchMapping("/{relationshipId}")
-    @PreAuthorize("hasAuthority('entity_builder:schema:write')")
+    @PreAuthorize("@entityBuilderSecurity.canWriteTenantSchema()")
     public RelationshipDtos.RelationshipDto update(
             @PathVariable UUID relationshipId,
             @Valid @RequestBody RelationshipDtos.UpdateRelationshipRequest req
@@ -71,7 +71,7 @@ public class EntityRelationshipsController {
     }
 
     @DeleteMapping("/{relationshipId}")
-    @PreAuthorize("hasAuthority('entity_builder:schema:write')")
+    @PreAuthorize("@entityBuilderSecurity.canWriteTenantSchema()")
     public void delete(@PathVariable UUID relationshipId) {
         UUID tenantId = SecurityUtil.principal().getTenantId();
         relationshipService.delete(tenantId, relationshipId);
@@ -88,6 +88,7 @@ public class EntityRelationshipsController {
                 r.getFromFieldSlug(),
                 r.getToFieldSlug(),
                 r.getCardinality(),
+                r.getDefinitionScope(),
                 r.getCreatedAt(),
                 r.getUpdatedAt()
         );

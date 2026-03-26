@@ -39,6 +39,8 @@ dependencies {
 
     implementation 'org.springframework.cloud:spring-cloud-starter-vault-config'
 
+    implementation 'com.github.jsqlparser:jsqlparser:5.1'
+
     developmentOnly 'org.springframework.boot:spring-boot-devtools'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'

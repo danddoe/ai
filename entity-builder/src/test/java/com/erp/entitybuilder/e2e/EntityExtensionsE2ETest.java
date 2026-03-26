@@ -59,6 +59,7 @@ class EntityExtensionsE2ETest extends AbstractEntityBuilderE2ETest {
         assertThat(createResp.getBody().get("baseEntityId")).isEqualTo(baseEntityId);
         assertThat(createResp.getBody().get("slug")).isEqualTo("contact-custom");
         assertThat(createResp.getBody().get("categoryKey")).isEqualTo("entity_builder");
+        assertThat(createResp.getBody().get("definitionScope")).isEqualTo("TENANT_OBJECT");
 
         // List extensions
         ResponseEntity<List> listResp = restTemplate.exchange(

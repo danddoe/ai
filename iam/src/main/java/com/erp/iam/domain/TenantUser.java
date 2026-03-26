@@ -32,6 +32,10 @@ public class TenantUser {
     @Column(nullable = false, length = 50)
     private String status = "ACTIVE";
 
+    /** Optional UI language preference for this tenant membership (BCP 47 primary tag, max 16 chars). */
+    @Column(name = "preferred_locale", length = 16)
+    private String preferredLocale;
+
     @Column(name = "invited_at")
     private Instant invitedAt;
 
@@ -68,6 +72,8 @@ public class TenantUser {
     public void setDisplayName(String displayName) { this.displayName = displayName; }
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+    public String getPreferredLocale() { return preferredLocale; }
+    public void setPreferredLocale(String preferredLocale) { this.preferredLocale = preferredLocale; }
     public Instant getInvitedAt() { return invitedAt; }
     public void setInvitedAt(Instant invitedAt) { this.invitedAt = invitedAt; }
     public Instant getJoinedAt() { return joinedAt; }

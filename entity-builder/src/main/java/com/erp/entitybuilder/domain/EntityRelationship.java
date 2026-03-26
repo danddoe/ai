@@ -39,6 +39,10 @@ public class EntityRelationship {
     @Column(nullable = false, length = 50)
     private String cardinality;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "definition_scope", nullable = false, length = 32)
+    private DefinitionScope definitionScope = DefinitionScope.TENANT_OBJECT;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -83,6 +87,9 @@ public class EntityRelationship {
 
     public String getCardinality() { return cardinality; }
     public void setCardinality(String cardinality) { this.cardinality = cardinality; }
+
+    public DefinitionScope getDefinitionScope() { return definitionScope; }
+    public void setDefinitionScope(DefinitionScope definitionScope) { this.definitionScope = definitionScope; }
 
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }

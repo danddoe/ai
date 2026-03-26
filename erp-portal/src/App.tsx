@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuth } from './auth/AuthProvider';
-import { AppShell } from './layouts/AppShell';
+import { AppLayout } from './layouts/AppShell';
 import { LoginPage } from './pages/LoginPage';
 import { HomePage } from './pages/HomePage';
 import { EntitiesPage } from './pages/EntitiesPage';
@@ -16,6 +16,7 @@ import { AuditHubPage } from './pages/AuditHubPage';
 import { EntityAuditPage } from './pages/EntityAuditPage';
 import { CreateUiWizardPage } from './pages/CreateUiWizardPage';
 import { PortalNavigationItemsPage } from './pages/PortalNavigationItemsPage';
+import { DdlImportPage } from './pages/DdlImportPage';
 
 function Protected({ children }: { children: ReactNode }) {
   const { accessToken, sessionRestored } = useAuth();
@@ -41,7 +42,7 @@ export function App() {
         path="/"
         element={
           <Protected>
-            <AppShell />
+            <AppLayout />
           </Protected>
         }
       >
@@ -51,6 +52,7 @@ export function App() {
         <Route path="ui/create" element={<CreateUiWizardPage />} />
         <Route path="settings/navigation-items" element={<PortalNavigationItemsPage />} />
         <Route path="entities" element={<EntitiesPage />} />
+        <Route path="entities/ddl-import" element={<DdlImportPage />} />
         <Route path="entities/:entityId/layouts" element={<EntityLayoutsPage />} />
         <Route path="entities/:entityId/layouts/:layoutId/preview" element={<FormLayoutPreviewPage />} />
         <Route path="entities/:entityId/layouts/:layoutId" element={<FormBuilderPage />} />

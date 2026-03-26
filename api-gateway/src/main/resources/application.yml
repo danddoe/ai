@@ -72,6 +72,12 @@ spring:
           uri: ${ENTITY_BUILDER_URL:http://localhost:8081}
           predicates:
             - Path=/v1/entity-relationships,/v1/entity-relationships/**
+        # DDL import (portal): POST /v1/entities/import/ddl/preview and POST /v1/entities/import/ddl (explicit route ahead of generic /v1/entities/**).
+        - id: entity-builder-entities-ddl-import
+          order: -1
+          uri: ${ENTITY_BUILDER_URL:http://localhost:8081}
+          predicates:
+            - Path=/v1/entities/import/ddl,/v1/entities/import/ddl/**
         - id: entity-builder-entities
           uri: ${ENTITY_BUILDER_URL:http://localhost:8081}
           predicates:
@@ -80,6 +86,10 @@ spring:
           uri: ${ENTITY_BUILDER_URL:http://localhost:8081}
           predicates:
             - Path=/v1/form-layout-templates,/v1/form-layout-templates/**
+        - id: entity-builder-entity-status
+          uri: ${ENTITY_BUILDER_URL:http://localhost:8081}
+          predicates:
+            - Path=/v1/entity-status,/v1/entity-status/**
         # IAM
         - id: iam-auth
           uri: ${IAM_URL:http://localhost:8080}

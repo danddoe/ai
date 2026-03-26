@@ -1,5 +1,8 @@
 package com.erp.entitybuilder.service;
 
+import com.erp.entitybuilder.catalog.EntityStatusCatalogConstants;
+import com.erp.entitybuilder.config.PlatformTenantProperties;
+import com.erp.entitybuilder.domain.DefinitionScope;
 import com.erp.entitybuilder.domain.EntityCategoryKeys;
 import com.erp.entitybuilder.domain.EntityDefinition;
 import com.erp.entitybuilder.domain.EntityField;
@@ -9,7 +12,9 @@ import com.erp.entitybuilder.repository.EntityDefinitionRepository;
 import com.erp.entitybuilder.repository.EntityFieldRepository;
 import com.erp.entitybuilder.repository.TenantEntityExtensionFieldRepository;
 import com.erp.entitybuilder.repository.TenantEntityExtensionRepository;
+import com.erp.entitybuilder.security.EntityBuilderSecurity;
 import com.erp.entitybuilder.web.ApiException;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
@@ -20,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 import jakarta.persistence.criteria.Predicate;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -33,21 +39,68 @@ public class EntitySchemaService {
     private final EntityFieldRepository fieldRepository;
     private final TenantEntityExtensionRepository tenantEntityExtensionRepository;
     private final TenantEntityExtensionFieldRepository tenantEntityExtensionFieldRepository;
+    private final EntityBuilderSecurity entityBuilderSecurity;
+    private final PlatformTenantProperties platformTenantProperties;
+    private final EntityFieldLabelService entityFieldLabelService;
 
     public EntitySchemaService(
             EntityDefinitionRepository entityRepository,
             EntityFieldRepository fieldRepository,
             TenantEntityExtensionRepository tenantEntityExtensionRepository,
-            TenantEntityExtensionFieldRepository tenantEntityExtensionFieldRepository
+            TenantEntityExtensionFieldRepository tenantEntityExtensionFieldRepository,
+            EntityBuilderSecurity entityBuilderSecurity,
+            PlatformTenantProperties platformTenantProperties,
+            @Lazy EntityFieldLabelService entityFieldLabelService
     ) {
         this.entityRepository = entityRepository;
         this.fieldRepository = fieldRepository;
         this.tenantEntityExtensionRepository = tenantEntityExtensionRepository;
         this.tenantEntityExtensionFieldRepository = tenantEntityExtensionFieldRepository;
+        this.entityBuilderSecurity = entityBuilderSecurity;
+        this.platformTenantProperties = platformTenantProperties;
+        this.entityFieldLabelService = entityFieldLabelService;
+    }
+
+    private void assertCanMutateEntitySchema(EntityDefinition entity) {
+        if (!entityBuilderSecurity.canMutateEntitySchema(entity)) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "forbidden",
+                    "Cannot modify platform catalog entity definitions with current permissions");
+        }
+    }
+
+    /**
+     * Creates a tenant entity. When {@code bootstrapDefaultFields} is true (portal/API create), adds a required EAV {@code name} field
+     * and sets {@code defaultDisplayFieldSlug}. Catalog sync passes {@code false} so manifests own the field set.
+     */
+    @Transactional
+    public EntityDefinition createEntity(UUID tenantId, String name, String slug, String description, String status, String categoryKey) {
+        return createEntity(tenantId, name, slug, description, status, categoryKey, true, DefinitionScope.TENANT_OBJECT);
     }
 
     @Transactional
-    public EntityDefinition createEntity(UUID tenantId, String name, String slug, String description, String status, String categoryKey) {
+    public EntityDefinition createEntity(
+            UUID tenantId,
+            String name,
+            String slug,
+            String description,
+            String status,
+            String categoryKey,
+            boolean bootstrapDefaultFields
+    ) {
+        return createEntity(tenantId, name, slug, description, status, categoryKey, bootstrapDefaultFields, DefinitionScope.TENANT_OBJECT);
+    }
+
+    @Transactional
+    public EntityDefinition createEntity(
+            UUID tenantId,
+            String name,
+            String slug,
+            String description,
+            String status,
+            String categoryKey,
+            boolean bootstrapDefaultFields,
+            DefinitionScope definitionScope
+    ) {
         if (entityRepository.existsByTenantIdAndSlug(tenantId, slug)
                 || tenantEntityExtensionRepository.existsByTenantIdAndSlug(tenantId, slug)) {
             throw new ApiException(HttpStatus.CONFLICT, "conflict", "Entity slug already exists", Map.of("slug", slug));
@@ -59,6 +112,23 @@ public class EntitySchemaService {
         e.setDescription(description);
         if (status != null && !status.isBlank()) e.setStatus(status);
         e.setCategoryKey(EntityCategoryKeys.normalizeOrNull(categoryKey));
+        e.setDefinitionScope(definitionScope);
+        e = entityRepository.save(e);
+        if (bootstrapDefaultFields) {
+            createField(tenantId, e.getId(), "Name", "name", "string", true, false, null, 0, null, null);
+            e.setDefaultDisplayFieldSlug("name");
+            e = entityRepository.save(e);
+        }
+        return e;
+    }
+
+    /**
+     * Marks an entity as platform catalog (system manifest) scope. Idempotent.
+     */
+    @Transactional
+    public EntityDefinition markEntityAsStandardCatalog(UUID tenantId, UUID entityId) {
+        EntityDefinition e = getEntity(tenantId, entityId);
+        e.setDefinitionScope(DefinitionScope.STANDARD_OBJECT);
         return entityRepository.save(e);
     }
 
@@ -83,17 +153,86 @@ public class EntitySchemaService {
         }
         if (qNorm.isEmpty()) {
             if (categoryKeyFilter.isEmpty() || categoryKeyFilter.get() == null || categoryKeyFilter.get().isBlank()) {
-                return entityRepository.findAllByTenantIdOrderByNameAsc(tenantId);
+                return augmentEntityListWithPlatformEntityStatus(
+                        tenantId, entityRepository.findAllByTenantIdOrderByNameAsc(tenantId), categoryKeyFilter, qNorm);
             }
             String key = EntityCategoryKeys.normalizeOrNull(categoryKeyFilter.get().trim());
             if (key == null) {
-                return entityRepository.findAllByTenantIdOrderByNameAsc(tenantId);
+                return augmentEntityListWithPlatformEntityStatus(
+                        tenantId, entityRepository.findAllByTenantIdOrderByNameAsc(tenantId), categoryKeyFilter, qNorm);
             }
-            return entityRepository.findAllByTenantIdAndCategoryKeyOrderByNameAsc(tenantId, key);
+            return augmentEntityListWithPlatformEntityStatus(
+                    tenantId,
+                    entityRepository.findAllByTenantIdAndCategoryKeyOrderByNameAsc(tenantId, key),
+                    categoryKeyFilter,
+                    qNorm
+            );
         }
         Specification<EntityDefinition> spec = entitySearchSpec(tenantId, categoryKeyFilter, qNorm.get());
-        return entityRepository.findAll(spec, PageRequest.of(0, ENTITY_SEARCH_MAX_RESULTS, Sort.by("name").ascending()))
+        List<EntityDefinition> searched = entityRepository.findAll(spec, PageRequest.of(0, ENTITY_SEARCH_MAX_RESULTS, Sort.by("name").ascending()))
                 .getContent();
+        return augmentEntityListWithPlatformEntityStatus(tenantId, searched, categoryKeyFilter, qNorm);
+    }
+
+    /**
+     * Surfaces the platform {@link EntityStatusCatalogConstants#SLUG} definition in tenant entity lists so the portal
+     * can open layouts/records while the user JWT tenant differs from {@link PlatformTenantProperties#getTenantId()}.
+     */
+    private List<EntityDefinition> augmentEntityListWithPlatformEntityStatus(
+            UUID tenantId,
+            List<EntityDefinition> fromTenant,
+            Optional<String> categoryKeyFilter,
+            Optional<String> qNorm
+    ) {
+        if (!platformTenantProperties.isConfigured()) {
+            return fromTenant;
+        }
+        UUID platformTid = platformTenantProperties.getTenantId();
+        if (tenantId.equals(platformTid)) {
+            return fromTenant;
+        }
+        Optional<EntityDefinition> platformEntityOpt =
+                entityRepository.findByTenantIdAndSlug(platformTid, EntityStatusCatalogConstants.SLUG);
+        if (platformEntityOpt.isEmpty()) {
+            return fromTenant;
+        }
+        EntityDefinition pe = platformEntityOpt.get();
+        if (!DefinitionScope.STANDARD_OBJECT.equals(pe.getDefinitionScope())) {
+            return fromTenant;
+        }
+        for (EntityDefinition e : fromTenant) {
+            if (e.getId().equals(pe.getId()) || EntityStatusCatalogConstants.SLUG.equals(e.getSlug())) {
+                return fromTenant;
+            }
+        }
+        if (categoryKeyFilter.isPresent() && categoryKeyFilter.get() != null && !categoryKeyFilter.get().isBlank()) {
+            String key = EntityCategoryKeys.normalizeOrNull(categoryKeyFilter.get().trim());
+            if (key != null && !key.equals(pe.getCategoryKey())) {
+                return fromTenant;
+            }
+        }
+        if (qNorm.isPresent()) {
+            String qLower = qNorm.get().toLowerCase(Locale.ROOT);
+            boolean matches = pe.getName().toLowerCase(Locale.ROOT).contains(qLower)
+                    || pe.getSlug().toLowerCase(Locale.ROOT).contains(qLower);
+            try {
+                if (UUID.fromString(qNorm.get().trim()).equals(pe.getId())) {
+                    matches = true;
+                }
+            } catch (IllegalArgumentException ignored) {
+                // not a UUID literal
+            }
+            if (!matches) {
+                return fromTenant;
+            }
+        }
+        List<EntityDefinition> merged = new ArrayList<>(fromTenant);
+        merged.add(pe);
+        merged.sort(Comparator.comparing(EntityDefinition::getName, String.CASE_INSENSITIVE_ORDER));
+        if (qNorm.isPresent() && merged.size() > ENTITY_SEARCH_MAX_RESULTS) {
+            return merged.subList(0, ENTITY_SEARCH_MAX_RESULTS);
+        }
+        return merged;
     }
 
     private static Specification<EntityDefinition> entitySearchSpec(
@@ -134,13 +273,42 @@ public class EntitySchemaService {
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "not_found", "Entity not found"));
     }
 
+    /**
+     * Entity belongs to {@code requestingTenantId}, or is the platform {@link EntityStatusCatalogConstants#SLUG}
+     * standard definition (readable from any tenant).
+     */
+    @Transactional(readOnly = true)
+    public EntityDefinition resolveEntityForTenantAccess(UUID requestingTenantId, UUID entityId) {
+        EntityDefinition e = entityRepository.findById(entityId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "not_found", "Entity not found"));
+        if (requestingTenantId.equals(e.getTenantId())) {
+            return e;
+        }
+        if (platformTenantProperties.isConfigured()
+                && platformTenantProperties.getTenantId().equals(e.getTenantId())
+                && DefinitionScope.STANDARD_OBJECT.equals(e.getDefinitionScope())
+                && EntityStatusCatalogConstants.SLUG.equals(e.getSlug())) {
+            return e;
+        }
+        throw new ApiException(HttpStatus.NOT_FOUND, "not_found", "Entity not found");
+    }
+
     @Transactional(readOnly = true)
     public EntityDefinition getEntityBySlug(UUID tenantId, String slug) {
         if (slug == null || slug.isBlank()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "bad_request", "slug required");
         }
-        return entityRepository.findByTenantIdAndSlug(tenantId, slug.trim())
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "not_found", "Entity not found", Map.of("slug", slug.trim())));
+        String s = slug.trim();
+        Optional<EntityDefinition> local = entityRepository.findByTenantIdAndSlug(tenantId, s);
+        if (local.isPresent()) {
+            return local.get();
+        }
+        if (platformTenantProperties.isConfigured()
+                && EntityStatusCatalogConstants.SLUG.equals(s)) {
+            return entityRepository.findByTenantIdAndSlug(platformTenantProperties.getTenantId(), s)
+                    .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "not_found", "Entity not found", Map.of("slug", s)));
+        }
+        throw new ApiException(HttpStatus.NOT_FOUND, "not_found", "Entity not found", Map.of("slug", s));
     }
 
     @Transactional
@@ -154,9 +322,13 @@ public class EntitySchemaService {
             boolean clearDefaultDisplayField,
             Optional<String> defaultDisplayFieldSlug,
             boolean clearCategoryKey,
-            Optional<String> categoryKey
+            Optional<String> categoryKey,
+            Optional<DefinitionScope> definitionScope
     ) {
         EntityDefinition e = getEntity(tenantId, entityId);
+        assertCanMutateEntitySchema(e);
+
+        definitionScope.ifPresent(newScope -> applyDefinitionScopeChange(e, newScope));
 
         name.filter(v -> !v.isBlank()).ifPresent(e::setName);
         slug.filter(v -> !v.isBlank()).ifPresent(newSlug -> {
@@ -216,9 +388,21 @@ public class EntitySchemaService {
         return e;
     }
 
+    private void applyDefinitionScopeChange(EntityDefinition e, DefinitionScope newScope) {
+        if (newScope == null || newScope == e.getDefinitionScope()) {
+            return;
+        }
+        if (!entityBuilderSecurity.canWriteFullSchema()) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "forbidden",
+                    "Platform schema write (entity_builder:schema:write) is required to change core vs tenant entity scope");
+        }
+        e.setDefinitionScope(newScope);
+    }
+
     @Transactional
     public void deleteEntity(UUID tenantId, UUID entityId) {
         EntityDefinition e = getEntity(tenantId, entityId);
+        assertCanMutateEntitySchema(e);
         if (e.getTenantEntityExtensionId() != null) {
             tenantEntityExtensionRepository.deleteById(e.getTenantEntityExtensionId());
             return;
@@ -287,6 +471,7 @@ public class EntitySchemaService {
             e.setStatus(status);
         }
         e.setCategoryKey(base.getCategoryKey());
+        e.setDefinitionScope(DefinitionScope.TENANT_OBJECT);
         return entityRepository.save(e);
     }
 
@@ -306,6 +491,7 @@ public class EntitySchemaService {
     @Transactional
     public EntityField createField(UUID tenantId, UUID entityId, String name, String slug, String fieldType, boolean required, boolean pii, String configJson, Integer sortOrder, String labelOverride, String formatString) {
         EntityDefinition entity = getEntity(tenantId, entityId);
+        assertCanMutateEntitySchema(entity);
 
         if (fieldRepository.existsByEntityIdAndSlug(entityId, slug)) {
             throw new ApiException(HttpStatus.CONFLICT, "conflict", "Field slug already exists", Map.of("slug", slug));
@@ -327,12 +513,13 @@ public class EntitySchemaService {
         if (entity.getTenantEntityExtensionId() != null) {
             mirrorExtensionFieldCreate(entity.getTenantEntityExtensionId(), f);
         }
+        entityFieldLabelService.syncEnglishRowFromLegacyOverride(tenantId, entityId, f);
         return f;
     }
 
     @Transactional(readOnly = true)
     public List<EntityField> listFields(UUID tenantId, UUID entityId) {
-        getEntity(tenantId, entityId);
+        resolveEntityForTenantAccess(tenantId, entityId);
         return fieldRepository.findByEntityIdOrderBySortOrderAscNameAsc(entityId);
     }
 
@@ -343,20 +530,20 @@ public class EntitySchemaService {
         if (!entityId.equals(f.getEntityId())) {
             throw new ApiException(HttpStatus.NOT_FOUND, "not_found", "Field not found");
         }
-        // Ensure entity belongs to tenant
-        getEntity(tenantId, entityId);
+        resolveEntityForTenantAccess(tenantId, entityId);
         return f;
     }
 
     @Transactional(readOnly = true)
     public boolean entityFieldExists(UUID tenantId, UUID entityId, String slug) {
-        getEntity(tenantId, entityId);
+        resolveEntityForTenantAccess(tenantId, entityId);
         return fieldRepository.existsByEntityIdAndSlug(entityId, slug);
     }
 
     @Transactional
     public EntityField updateField(UUID tenantId, UUID entityId, UUID fieldId, Optional<String> name, Optional<String> slug, Optional<String> fieldType, Optional<Boolean> required, Optional<Boolean> pii, Optional<String> configJson, Optional<Integer> sortOrder, Optional<String> labelOverride, Optional<String> formatString) {
         EntityDefinition entity = getEntity(tenantId, entityId);
+        assertCanMutateEntitySchema(entity);
         EntityField f = getField(tenantId, entityId, fieldId);
         String oldSlug = f.getSlug();
         UUID extId = entity.getTenantEntityExtensionId();
@@ -374,12 +561,19 @@ public class EntitySchemaService {
         configJson.ifPresent(f::setConfig);
         sortOrder.ifPresent(f::setSortOrder);
         labelOverride.ifPresent(lo -> f.setLabelOverride(nullIfBlank(lo)));
-        formatString.ifPresent(fs -> f.setFormatString(nullIfBlank(fs)));
+        formatString.ifPresent(s -> f.setFormatString(nullIfBlank(s)));
 
         fieldRepository.save(f);
 
         if (extId != null) {
             mirrorExtensionFieldUpdate(extId, oldSlug, f);
+        }
+        if (labelOverride.isPresent()) {
+            if (labelOverride.get().isBlank()) {
+                entityFieldLabelService.deleteSyncedEnglishWhenLegacyCleared(tenantId, entityId, fieldId);
+            } else {
+                entityFieldLabelService.syncEnglishRowFromLegacyOverride(tenantId, entityId, f);
+            }
         }
         return f;
     }
@@ -387,6 +581,7 @@ public class EntitySchemaService {
     @Transactional
     public void deleteField(UUID tenantId, UUID entityId, UUID fieldId) {
         EntityDefinition entity = getEntity(tenantId, entityId);
+        assertCanMutateEntitySchema(entity);
         EntityField f = getField(tenantId, entityId, fieldId);
         if (entity.getTenantEntityExtensionId() != null) {
             tenantEntityExtensionFieldRepository.deleteByTenantEntityExtensionIdAndSlug(

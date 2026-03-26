@@ -1,5 +1,6 @@
 package com.erp.entitybuilder.web.v1.dto;
 
+import com.erp.entitybuilder.domain.DefinitionScope;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
@@ -18,6 +19,7 @@ public class EntityDtos {
             String defaultDisplayFieldSlug,
             String status,
             String categoryKey,
+            DefinitionScope definitionScope,
             Instant createdAt,
             Instant updatedAt
     ) {}
@@ -40,6 +42,9 @@ public class EntityDtos {
         @Size(max = 64)
         private String categoryKey;
 
+        /** When omitted, {@link DefinitionScope#TENANT_OBJECT}. Setting {@link DefinitionScope#STANDARD_OBJECT} requires full platform schema write. */
+        private DefinitionScope definitionScope;
+
         public String getName() { return name; }
         public void setName(String name) { this.name = name; }
         public String getSlug() { return slug; }
@@ -50,6 +55,8 @@ public class EntityDtos {
         public void setStatus(String status) { this.status = status; }
         public String getCategoryKey() { return categoryKey; }
         public void setCategoryKey(String categoryKey) { this.categoryKey = categoryKey; }
+        public DefinitionScope getDefinitionScope() { return definitionScope; }
+        public void setDefinitionScope(DefinitionScope definitionScope) { this.definitionScope = definitionScope; }
     }
 
     public static class UpdateEntityRequest {
@@ -77,6 +84,12 @@ public class EntityDtos {
         @Size(max = 64)
         private String categoryKey;
 
+        /**
+         * When set, updates catalog vs tenant scope. Changing to/from {@link DefinitionScope#STANDARD_OBJECT}
+         * requires full platform schema write ({@code entity_builder:schema:write}).
+         */
+        private DefinitionScope definitionScope;
+
         public String getName() { return name; }
         public void setName(String name) { this.name = name; }
         public String getSlug() { return slug; }
@@ -93,6 +106,8 @@ public class EntityDtos {
         public void setClearCategoryKey(Boolean clearCategoryKey) { this.clearCategoryKey = clearCategoryKey; }
         public String getCategoryKey() { return categoryKey; }
         public void setCategoryKey(String categoryKey) { this.categoryKey = categoryKey; }
+        public DefinitionScope getDefinitionScope() { return definitionScope; }
+        public void setDefinitionScope(DefinitionScope definitionScope) { this.definitionScope = definitionScope; }
     }
 }
 

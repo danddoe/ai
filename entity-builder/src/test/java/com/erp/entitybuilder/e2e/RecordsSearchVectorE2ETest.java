@@ -52,7 +52,9 @@ class RecordsSearchVectorE2ETest extends AbstractEntityBuilderE2ETest {
                 Map.class
         );
 
-        Map<String, Object> recordBody = Map.of("values", Map.of("company", "Acme Industrial Corp"));
+        Map<String, Object> recordBody = Map.of(
+                "values",
+                Map.of("name", "Acme Vendor", "company", "Acme Industrial Corp"));
         ResponseEntity<Map> recResp = restTemplate.exchange(
                 baseUrl + "/v1/tenants/" + tenantId + "/entities/" + entityId + "/records",
                 HttpMethod.POST,
