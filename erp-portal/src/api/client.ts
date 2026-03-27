@@ -1,4 +1,8 @@
+import { isAccessTokenExpiredOrNearing } from '../auth/jwtPermissions';
 import { applyPreferredLocaleFromServer, getApiLocale } from '../i18n/apiLocale';
+
+/** Proactively refresh the bearer this long before JWT {@code exp} (default IAM access token = 15 min). */
+const ACCESS_TOKEN_PROACTIVE_REFRESH_LEEWAY_MS = 120_000;
 
 const AUTH_REFRESH_LOCK_NAME = 'erp_portal_auth_refresh';
 const AUTH_BROADCAST_NAME = 'erp_portal_auth';
@@ -149,6 +153,50 @@ async function fetchRefreshAndApply(): Promise<string> {
   return data.accessToken;
 }
 
+function loginPageUrlWithQuery(query: Record<string, string>): string {
+  const root = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+  const path = `${root}/login`.replace(/\/{2,}/g, '/');
+  const q = new URLSearchParams(query);
+  return `${window.location.origin}${path}?${q.toString()}`;
+}
+
+/**
+ * Hard navigation so the app does not stay on a screen showing "Request failed (403)" after refresh fails.
+ */
+function redirectToLoginSessionExpired(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const returnTo = `${window.location.pathname}${window.location.search}`;
+    window.location.replace(
+      loginPageUrlWithQuery({ session: 'expired', returnTo: returnTo || '/home' })
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * While the refresh cookie is valid, obtain a new access token before the current one expires.
+ * @returns false if the session is invalid and the browser is being sent to login.
+ */
+async function ensureAccessTokenFreshForRequest(): Promise<boolean> {
+  if (!accessTokenMemory) return true;
+  if (!isAccessTokenExpiredOrNearing(accessTokenMemory, ACCESS_TOKEN_PROACTIVE_REFRESH_LEEWAY_MS)) {
+    return true;
+  }
+  const refreshed = await refreshAccessToken();
+  if (refreshed.kind === 'ok') {
+    return true;
+  }
+  if (refreshed.kind === 'auth_failed') {
+    accessTokenMemory = null;
+    onSessionInvalidated?.();
+    redirectToLoginSessionExpired();
+    return false;
+  }
+  return true;
+}
+
 /** Notify other tabs after login (same-origin BroadcastChannel). */
 export function publishAccessTokenToOtherTabs(accessToken: string, preferredLocale?: string | null) {
   const ts = Date.now();
@@ -167,6 +215,15 @@ export function publishAccessTokenToOtherTabs(accessToken: string, preferredLoca
  */
 export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const url = path.startsWith('http') ? path : `${apiBaseUrl()}${path.startsWith('/') ? path : `/${path}`}`;
+  const skipRefresh = path.includes('/auth/refresh') || path.includes('/auth/login');
+
+  if (!skipRefresh) {
+    const continuing = await ensureAccessTokenFreshForRequest();
+    if (!continuing) {
+      return new Response(null, { status: 401, statusText: 'Session expired' });
+    }
+  }
+
   const headers = new Headers(init.headers);
   const loc = localeRequestHeaders();
   headers.set('Accept-Language', loc['Accept-Language']);
@@ -184,7 +241,6 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
 
   let res = await doFetch();
 
-  const skipRefresh = path.includes('/auth/refresh') || path.includes('/auth/login');
   if (!skipRefresh && (res.status === 401 || res.status === 403)) {
     const refreshed = await refreshAccessToken();
     if (refreshed.kind === 'ok') {
@@ -193,6 +249,8 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
     } else if (refreshed.kind === 'auth_failed') {
       accessTokenMemory = null;
       onSessionInvalidated?.();
+      redirectToLoginSessionExpired();
+      return new Response(null, { status: 401, statusText: 'Session expired' });
     }
   }
 

@@ -8,5 +8,7 @@ import java.util.UUID;
 
 public interface PiiVaultRepository extends JpaRepository<PiiVaultEntry, UUID> {
     Optional<PiiVaultEntry> findByTenantIdAndRecordIdAndFieldId(UUID tenantId, UUID recordId, UUID fieldId);
+
+    boolean existsByFieldId(UUID fieldId);
 }
 

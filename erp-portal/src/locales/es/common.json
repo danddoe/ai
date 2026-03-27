@@ -26,7 +26,9 @@
     "signInFailed": "Error al iniciar sesión",
     "loginFailed": "Error de inicio de sesión",
     "signingIn": "Iniciando sesión…",
-    "signIn": "Entrar"
+    "signIn": "Entrar",
+    "sessionExpiredTitle": "Sesión caducada",
+    "sessionExpiredBody": "Tu sesión expiró o el refresco terminó. Vuelve a iniciar sesión. Para prolongar la actividad, un administrador puede aumentar la vida del token de acceso en IAM (JWT_ACCESS_EXPIRY / app.jwt.access-token-expiration-seconds)."
   },
   "home": {
     "title": "Inicio",

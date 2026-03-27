@@ -1,12 +1,21 @@
 package com.erp.entitybuilder.service;
 
+import com.erp.entitybuilder.domain.EntityField;
+import com.erp.entitybuilder.domain.EntityFieldStatuses;
+import com.erp.entitybuilder.domain.EntityRelationship;
+import com.erp.entitybuilder.repository.EntityFieldRepository;
+import com.erp.entitybuilder.repository.EntityRelationshipRepository;
 import com.erp.entitybuilder.web.ApiException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * Validates region-based form layout JSON when {@code version} is {@code 2}. Legacy layouts without {@code version: 2} are skipped.
@@ -19,12 +28,24 @@ public class FormLayoutJsonValidator {
     private static final Set<String> ACTION_VARIANTS = Set.of("primary", "secondary", "link");
 
     private final ObjectMapper objectMapper;
+    private final EntityRelationshipRepository relationshipRepository;
+    private final EntityFieldRepository fieldRepository;
 
-    public FormLayoutJsonValidator(ObjectMapper objectMapper) {
+    public FormLayoutJsonValidator(
+            ObjectMapper objectMapper,
+            EntityRelationshipRepository relationshipRepository,
+            EntityFieldRepository fieldRepository
+    ) {
         this.objectMapper = objectMapper;
+        this.relationshipRepository = relationshipRepository;
+        this.fieldRepository = fieldRepository;
     }
 
-    public void validateOrThrow(String layoutJson) {
+    /**
+     * Validates layout JSON for an entity-scoped form. Resolves {@code region.binding} for {@code entity_relationship}
+     * against the tenant and ensures {@code fromEntityId} matches {@code formLayoutEntityId}.
+     */
+    public void validateOrThrow(String layoutJson, UUID tenantId, UUID formLayoutEntityId) {
         JsonNode root;
         try {
             root = objectMapper.readTree(layoutJson);
@@ -55,6 +76,7 @@ public class FormLayoutJsonValidator {
             if (!REGION_ROLES.contains(role)) {
                 throw new ApiException(HttpStatus.BAD_REQUEST, "bad_request", "Invalid region role", java.util.Map.of("role", role));
             }
+            validateRegionBinding(region, tenantId, formLayoutEntityId);
             JsonNode rows = region.get("rows");
             if (rows == null || !rows.isArray()) {
                 throw new ApiException(HttpStatus.BAD_REQUEST, "bad_request", "Each region must have a rows array");
@@ -64,6 +86,107 @@ public class FormLayoutJsonValidator {
             }
         }
         validateRuntime(root, regionIds);
+        validateV2FieldItemsReferenceActiveFields(root, formLayoutEntityId);
+    }
+
+    private void validateV2FieldItemsReferenceActiveFields(JsonNode root, UUID formLayoutEntityId) {
+        JsonNode versionNode = root.get("version");
+        if (versionNode == null || !versionNode.isNumber() || versionNode.intValue() != 2) {
+            return;
+        }
+        Set<UUID> activeIds = null;
+        JsonNode regions = root.get("regions");
+        if (regions == null || !regions.isArray()) {
+            return;
+        }
+        for (JsonNode region : regions) {
+            JsonNode rows = region.get("rows");
+            if (rows == null || !rows.isArray()) {
+                continue;
+            }
+            for (JsonNode row : rows) {
+                JsonNode columns = row.get("columns");
+                if (columns == null || !columns.isArray()) {
+                    continue;
+                }
+                for (JsonNode col : columns) {
+                    JsonNode items = col.get("items");
+                    if (items == null || !items.isArray()) {
+                        continue;
+                    }
+                    for (JsonNode item : items) {
+                        activeIds = requireActiveFieldItem(item, formLayoutEntityId, activeIds);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Returns an updated cache of active field ids for the entity, or throws when a non-action layout item
+     * references a missing or inactive {@link EntityField}.
+     */
+    private Set<UUID> requireActiveFieldItem(JsonNode item, UUID formLayoutEntityId, Set<UUID> activeIdsCache) {
+        if (!item.isObject()) {
+            return activeIdsCache;
+        }
+        JsonNode kindNode = item.get("kind");
+        if (kindNode != null && kindNode.isTextual() && "action".equals(kindNode.asText())) {
+            return activeIdsCache;
+        }
+        JsonNode fid = item.get("fieldId");
+        if (fid == null || !fid.isTextual() || fid.asText().isBlank()) {
+            return activeIdsCache;
+        }
+        UUID fieldId;
+        try {
+            fieldId = UUID.fromString(fid.asText().trim());
+        } catch (Exception e) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "bad_request", "item.fieldId must be a valid UUID");
+        }
+        if (activeIdsCache == null) {
+            List<EntityField> active = fieldRepository.findByEntityIdAndStatusOrderBySortOrderAscNameAsc(
+                    formLayoutEntityId, EntityFieldStatuses.ACTIVE);
+            activeIdsCache = new HashSet<>();
+            for (EntityField f : active) {
+                activeIdsCache.add(f.getId());
+            }
+        }
+        if (!activeIdsCache.contains(fieldId)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "bad_request",
+                    "Layout references an unknown or inactive field",
+                    Map.of("fieldId", fieldId.toString()));
+        }
+        return activeIdsCache;
+    }
+
+    private void validateRegionBinding(JsonNode region, UUID tenantId, UUID formLayoutEntityId) {
+        JsonNode binding = region.get("binding");
+        if (binding == null || binding.isNull()) {
+            return;
+        }
+        if (!binding.isObject()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "bad_request", "region.binding must be an object when present");
+        }
+        JsonNode kindNode = binding.get("kind");
+        if (kindNode == null || !kindNode.isTextual() || !"entity_relationship".equals(kindNode.asText())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "bad_request", "region.binding.kind must be entity_relationship");
+        }
+        JsonNode relIdNode = binding.get("relationshipId");
+        if (relIdNode == null || !relIdNode.isTextual() || relIdNode.asText().isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "bad_request", "region.binding.relationshipId must be a non-blank UUID string");
+        }
+        UUID relationshipId;
+        try {
+            relationshipId = UUID.fromString(relIdNode.asText());
+        } catch (Exception e) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "bad_request", "region.binding.relationshipId must be a valid UUID");
+        }
+        EntityRelationship rel = relationshipRepository.findByIdAndTenantId(relationshipId, tenantId)
+                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "bad_request", "Unknown relationship for binding", Map.of("relationshipId", relationshipId.toString())));
+        if (!formLayoutEntityId.equals(rel.getFromEntityId())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "bad_request", "Relationship parent entity does not match form layout entity", Map.of("relationshipId", relationshipId.toString()));
+        }
     }
 
     private static void validateRuntime(JsonNode root, java.util.Set<String> regionIds) {

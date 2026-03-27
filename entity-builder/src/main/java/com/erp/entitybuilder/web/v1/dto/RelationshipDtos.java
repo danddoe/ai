@@ -34,7 +34,7 @@ public class RelationshipDtos {
         private String slug;
 
         @NotBlank
-        private String cardinality; // one-to-one, one-to-many, many-to-many
+        private String cardinality; // one-to-one, one-to-many, many-to-one, many-to-many
 
         private UUID fromEntityId;
         private UUID toEntityId;

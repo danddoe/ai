@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { Navigate, useLocation } from 'react-router-dom';
+import { Navigate, useLocation, useSearchParams } from 'react-router-dom';
 import {
   Alert,
   Box,
@@ -20,11 +20,28 @@ import { useTranslation } from 'react-i18next';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { useAuth } from '../auth/AuthProvider';
 
+/** Same-origin in-app path only (avoid open redirects via returnTo query). */
+function safeInternalReturnPath(raw: string | null): string | null {
+  if (!raw || typeof raw !== 'string') return null;
+  let decoded = raw.trim();
+  try {
+    decoded = decodeURIComponent(decoded);
+  } catch {
+    return null;
+  }
+  if (!decoded.startsWith('/') || decoded.startsWith('//')) return null;
+  return decoded;
+}
+
 export function LoginPage() {
   const { t } = useTranslation();
   const { accessToken, login, sessionRestored, portalBootstrap, portalBootstrapLoaded } = useAuth();
   const location = useLocation();
-  const from = (location.state as { from?: string } | null)?.from ?? '/home';
+  const [searchParams] = useSearchParams();
+  const sessionExpired = searchParams.get('session') === 'expired';
+  const returnToFromQuery = safeInternalReturnPath(searchParams.get('returnTo'));
+  const from =
+    returnToFromQuery ?? (location.state as { from?: string } | null)?.from ?? '/home';
 
   const [tenantSlugOrId, setTenantSlugOrId] = useState('');
   const [email, setEmail] = useState('');
@@ -95,6 +112,11 @@ export function LoginPage() {
                 {t('login.blurb')}
               </Text>
               <Divider mb="lg" />
+              {sessionExpired ? (
+                <Alert color="amber" variant="light" mb="md" title={t('login.sessionExpiredTitle')}>
+                  {t('login.sessionExpiredBody')}
+                </Alert>
+              ) : null}
               <form onSubmit={(e) => void onSubmit(e)}>
                 <Stack gap="md">
                   <TextInput

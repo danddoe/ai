@@ -3,8 +3,10 @@ package com.erp.entitybuilder.web.v1;
 import com.erp.entitybuilder.domain.DefinitionScope;
 import com.erp.entitybuilder.domain.EntityDefinition;
 import com.erp.entitybuilder.domain.EntityField;
+import com.erp.entitybuilder.domain.EntityFieldStatuses;
 import com.erp.entitybuilder.service.EntityFieldLabelService;
 import com.erp.entitybuilder.service.EntitySchemaService;
+import com.erp.entitybuilder.web.ApiException;
 import com.erp.entitybuilder.web.RequestLocaleResolver;
 import com.erp.entitybuilder.web.v1.dto.EntityFieldDtos;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -12,6 +14,8 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -71,7 +75,8 @@ public class EntityFieldsController {
                 configJson,
                 req.getSortOrder(),
                 req.getLabelOverride(),
-                req.getFormatString()
+                req.getFormatString(),
+                req.isIncludeInListSummaryDisplay()
         );
         return toDto(f, entity.getDefinitionScope(), request);
     }
@@ -133,6 +138,11 @@ public class EntityFieldsController {
             HttpServletRequest request
     ) {
         UUID tenantId = SecurityUtil.principal().getTenantId();
+        EntityField target = schemaService.getField(tenantId, entityId, fieldId);
+        if (!EntityFieldStatuses.isActive(target)) {
+            throw new ApiException(HttpStatus.CONFLICT, "conflict",
+                    "Inactive fields cannot update labels", Map.of("fieldId", fieldId));
+        }
         String label = body != null ? body.label() : null;
         fieldLabelService.upsertLabel(tenantId, entityId, fieldId, locale, label);
         DefinitionScope scope = schemaService.getEntity(tenantId, entityId).getDefinitionScope();
@@ -142,12 +152,13 @@ public class EntityFieldsController {
 
     @DeleteMapping("/{fieldId}")
     @PreAuthorize("@entityBuilderSecurity.canWriteTenantSchema()")
-    public void delete(
+    public ResponseEntity<EntityFieldDtos.FieldDeleteResponse> delete(
             @PathVariable UUID entityId,
             @PathVariable UUID fieldId
     ) {
         UUID tenantId = SecurityUtil.principal().getTenantId();
-        schemaService.deleteField(tenantId, entityId, fieldId);
+        var outcome = schemaService.deleteField(tenantId, entityId, fieldId);
+        return ResponseEntity.ok(new EntityFieldDtos.FieldDeleteResponse(outcome.name()));
     }
 
     private EntityFieldDtos.EntityFieldDto toDto(EntityField f, DefinitionScope definitionScope, HttpServletRequest request) {
@@ -186,7 +197,8 @@ public class EntityFieldsController {
                 display,
                 labels,
                 f.getFormatString(),
-                "ACTIVE",
+                f.getStatus(),
+                f.isIncludeInListSummaryDisplay(),
                 f.getCreatedAt(),
                 f.getUpdatedAt(),
                 config

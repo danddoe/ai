@@ -43,6 +43,14 @@ public class EntityField {
     @Column(name = "format_string", length = 500)
     private String formatString;
 
+    /** {@link EntityFieldStatuses#ACTIVE} or {@link EntityFieldStatuses#INACTIVE}. */
+    @Column(nullable = false, length = 32)
+    private String status = EntityFieldStatuses.ACTIVE;
+
+    /** When true, this field's formatted value is a part of the basic record list Display column (ordered by {@link #sortOrder}). */
+    @Column(name = "include_in_list_summary_display", nullable = false)
+    private boolean includeInListSummaryDisplay = false;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -93,6 +101,14 @@ public class EntityField {
 
     public String getFormatString() { return formatString; }
     public void setFormatString(String formatString) { this.formatString = formatString; }
+
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
+
+    public boolean isIncludeInListSummaryDisplay() { return includeInListSummaryDisplay; }
+    public void setIncludeInListSummaryDisplay(boolean includeInListSummaryDisplay) {
+        this.includeInListSummaryDisplay = includeInListSummaryDisplay;
+    }
 
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }

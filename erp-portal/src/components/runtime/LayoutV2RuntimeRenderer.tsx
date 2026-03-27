@@ -1,14 +1,26 @@
 import { useId, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Anchor, Button, Checkbox, Text, TextInput, Title } from '@mantine/core';
-import { isDocumentNumberFieldType, type EntityFieldDto } from '../../api/schemas';
+import type { EntityDto, EntityFieldDto, EntityRelationshipDto } from '../../api/schemas';
 import type { LayoutItem, LayoutItemAction, LayoutRegion, LayoutRow } from '../../types/formLayout';
 import {
   fieldTypeSupportsTextLengthConstraints,
   readLengthConstraintFromConfig,
 } from '../../utils/fieldTextConstraints';
 import { defaultPresentation, isActionItem, isSafeActionHref, resolveLayoutItemField } from '../../utils/layoutV2';
+import { resolveReferenceFieldCollectionRelationship } from '../../utils/referenceFieldConfig';
 import { ReferenceRecordLookupField } from './ReferenceRecordLookupField';
+import { RelatedRecordsRegion } from './RelatedRecordsRegion';
+import type { FieldUiOverrides } from '../../utils/businessRuleUi';
+
+export type LayoutRelatedRuntimeContext = {
+  tenantId: string;
+  hostEntityId: string;
+  parentRecordId: string | null;
+  relationships: EntityRelationshipDto[];
+  allEntities: EntityDto[];
+  canWrite: boolean;
+};
 
 type Props = {
   regions: LayoutRegion[];
@@ -24,6 +36,10 @@ type Props = {
   onLayoutAction?: (action: 'save' | 'cancel') => void;
   /** Inline validation messages keyed by field slug (shown under the control). */
   fieldErrors?: Record<string, string>;
+  /** Dynamic visibility / read-only / required from business rules (UI surface). */
+  fieldUiOverrides?: FieldUiOverrides;
+  /** Related-record regions ({@code entity_relationship} bindings). Omit in environments that do not load relationships. */
+  relatedContext?: LayoutRelatedRuntimeContext;
 };
 
 function collectTabGroups(regions: LayoutRegion[]): { kind: 'single'; region: LayoutRegion } | { kind: 'tabs'; groupId: string | null; regions: LayoutRegion[] }[] {
@@ -153,6 +169,8 @@ function FieldControl({
   canPiiRead,
   onChange,
   fieldError,
+  fieldUiOverrides,
+  relatedContext,
 }: {
   item: LayoutItem;
   field: EntityFieldDto;
@@ -161,16 +179,20 @@ function FieldControl({
   canPiiRead: boolean;
   onChange: (slug: string, v: unknown) => void;
   fieldError?: string;
+  fieldUiOverrides?: FieldUiOverrides;
+  relatedContext?: LayoutRelatedRuntimeContext;
 }) {
   const inputId = useId();
   const pres = item.presentation ?? defaultPresentation();
-  if (pres.hidden) return null;
+  const ui = fieldUiOverrides?.[field.slug];
+  if (pres.hidden || ui?.hidden) return null;
 
   const slug = field.slug;
   const schemaLabel = field.labelOverride?.trim() ? field.labelOverride : field.name;
   const label = pres.label?.trim() ? pres.label : schemaLabel;
   const piiLocked = field.pii && !canPiiRead;
-  const ro = disabled || pres.readOnly || piiLocked;
+  const ro = disabled || pres.readOnly || piiLocked || ui?.readOnly === true;
+  const requiredEffective = field.required || ui?.required === true;
   const ft = (field.fieldType || 'text').toLowerCase();
   const boxStyle = presentationInputBoxStyle(pres.width);
   const cfg = (field.config ?? undefined) as Record<string, unknown> | undefined;
@@ -180,7 +202,7 @@ function FieldControl({
   const labelNode = (
     <>
       {label}
-      {field.required ? (
+      {requiredEffective ? (
         <Text span c="red" component="span">
           {' '}
           *
@@ -283,19 +305,51 @@ function FieldControl({
       />
     );
   } else if (ft === 'reference') {
-    control = (
-      <ReferenceRecordLookupField
-        field={field}
-        value={value}
-        onChange={onChange}
-        disabled={ro}
-        labelNode={labelNode}
-        boxStyle={boxStyle}
-        description={pres.helpText}
-        fieldError={fieldError}
-        inputId={inputId}
-      />
-    );
+    const collectionRel =
+      relatedContext &&
+      resolveReferenceFieldCollectionRelationship(
+        field,
+        relatedContext.hostEntityId,
+        relatedContext.relationships,
+        relatedContext.allEntities
+      );
+    if (collectionRel) {
+      control = (
+        <>
+          <Title order={5} size="sm" mb="xs">
+            {labelNode}
+          </Title>
+          {pres.helpText ? (
+            <Text size="sm" c="dimmed" mb="sm">
+              {pres.helpText}
+            </Text>
+          ) : null}
+          <RelatedRecordsRegion
+            tenantId={relatedContext!.tenantId}
+            hostEntityId={relatedContext!.hostEntityId}
+            parentRecordId={relatedContext!.parentRecordId}
+            relationshipId={collectionRel.id}
+            relationships={relatedContext!.relationships}
+            allEntities={relatedContext!.allEntities}
+            canWrite={relatedContext!.canWrite && !ro}
+          />
+        </>
+      );
+    } else {
+      control = (
+        <ReferenceRecordLookupField
+          field={field}
+          value={value}
+          onChange={onChange}
+          disabled={ro}
+          labelNode={labelNode}
+          boxStyle={boxStyle}
+          description={pres.helpText}
+          fieldError={fieldError}
+          inputId={inputId}
+        />
+      );
+    }
   } else {
     const str = value === null || value === undefined ? '' : String(value);
     control = (
@@ -333,7 +387,9 @@ function renderRow(
   disabled: boolean,
   canPiiRead: boolean,
   onLayoutAction: ((action: 'save' | 'cancel') => void) | undefined,
-  fieldErrors: Record<string, string> | undefined
+  fieldErrors: Record<string, string> | undefined,
+  fieldUiOverrides: FieldUiOverrides | undefined,
+  relatedContext?: LayoutRelatedRuntimeContext
 ) {
   return (
     <div className="runtime-row" key={row.id}>
@@ -369,6 +425,8 @@ function renderRow(
                 canPiiRead={canPiiRead}
                 onChange={onChange}
                 fieldError={fieldErrors?.[field.slug]}
+                fieldUiOverrides={fieldUiOverrides}
+                relatedContext={relatedContext}
               />
             );
           })}
@@ -387,6 +445,8 @@ function RegionBlock({
   canPiiRead,
   onLayoutAction,
   fieldErrors,
+  fieldUiOverrides,
+  relatedContext,
 }: {
   region: LayoutRegion;
   fields: EntityFieldDto[];
@@ -396,8 +456,13 @@ function RegionBlock({
   canPiiRead: boolean;
   onLayoutAction?: (action: 'save' | 'cancel') => void;
   fieldErrors?: Record<string, string>;
+  fieldUiOverrides?: FieldUiOverrides;
+  relatedContext?: LayoutRelatedRuntimeContext;
 }) {
-  const relPlaceholder = region.binding?.kind === 'entity_relationship';
+  const relBinding =
+    region.binding?.kind === 'entity_relationship' && region.binding.relationshipId
+      ? region.binding
+      : null;
   return (
     <section className="runtime-region" key={region.id}>
       {region.title ? (
@@ -405,13 +470,34 @@ function RegionBlock({
           {region.title}
         </Title>
       ) : null}
-      {relPlaceholder ? (
+      {relBinding && relatedContext ? (
+        <RelatedRecordsRegion
+          tenantId={relatedContext.tenantId}
+          hostEntityId={relatedContext.hostEntityId}
+          parentRecordId={relatedContext.parentRecordId}
+          relationshipId={relBinding.relationshipId}
+          relationships={relatedContext.relationships}
+          allEntities={relatedContext.allEntities}
+          canWrite={relatedContext.canWrite && !disabled}
+        />
+      ) : relBinding && !relatedContext ? (
         <Text size="sm" c="dimmed">
-          Line items / related records are not available in this runtime yet.
+          Related records need relationship data (reload the page).
         </Text>
       ) : (
         region.rows.map((row) =>
-          renderRow(row, fields, values, onChange, disabled, canPiiRead, onLayoutAction, fieldErrors)
+          renderRow(
+            row,
+            fields,
+            values,
+            onChange,
+            disabled,
+            canPiiRead,
+            onLayoutAction,
+            fieldErrors,
+            fieldUiOverrides,
+            relatedContext
+          )
         )
       )}
     </section>
@@ -427,6 +513,8 @@ function TabGroupBlock({
   canPiiRead,
   onLayoutAction,
   fieldErrors,
+  fieldUiOverrides,
+  relatedContext,
 }: {
   regions: LayoutRegion[];
   fields: EntityFieldDto[];
@@ -436,6 +524,8 @@ function TabGroupBlock({
   canPiiRead: boolean;
   onLayoutAction?: (action: 'save' | 'cancel') => void;
   fieldErrors?: Record<string, string>;
+  fieldUiOverrides?: FieldUiOverrides;
+  relatedContext?: LayoutRelatedRuntimeContext;
 }) {
   const [idx, setIdx] = useState(0);
   const safe = Math.min(idx, Math.max(0, regions.length - 1));
@@ -469,6 +559,8 @@ function TabGroupBlock({
           canPiiRead={canPiiRead}
           onLayoutAction={onLayoutAction}
           fieldErrors={fieldErrors}
+          fieldUiOverrides={fieldUiOverrides}
+          relatedContext={relatedContext}
         />
       ) : null}
     </div>
@@ -485,6 +577,8 @@ export function LayoutV2RuntimeRenderer({
   useTabGroups,
   onLayoutAction,
   fieldErrors,
+  fieldUiOverrides,
+  relatedContext,
 }: Props) {
   const blocks = useMemo(() => {
     if (!useTabGroups) {
@@ -507,6 +601,8 @@ export function LayoutV2RuntimeRenderer({
             canPiiRead={canPiiRead}
             onLayoutAction={onLayoutAction}
             fieldErrors={fieldErrors}
+            fieldUiOverrides={fieldUiOverrides}
+            relatedContext={relatedContext}
           />
         ) : (
           <TabGroupBlock
@@ -519,80 +615,11 @@ export function LayoutV2RuntimeRenderer({
             canPiiRead={canPiiRead}
             onLayoutAction={onLayoutAction}
             fieldErrors={fieldErrors}
+            fieldUiOverrides={fieldUiOverrides}
+            relatedContext={relatedContext}
           />
         )
       )}
     </div>
   );
-}
-
-function fieldDisplayLabel(field: EntityFieldDto): string {
-  const d = field.displayLabel?.trim();
-  if (d) return d;
-  return field.labelOverride?.trim() || field.name;
-}
-
-/**
- * Required-field and text-length validation for visible layout regions.
- * Returns a map of field slug → message for inline display under inputs.
- */
-export function buildInlineFieldErrorsForRegions(
-  regions: LayoutRegion[],
-  fields: EntityFieldDto[],
-  values: Record<string, unknown>
-): Record<string, string> {
-  const errors: Record<string, string> = {};
-
-  const seenRequired = new Set<string>();
-  for (const region of regions) {
-    for (const row of region.rows) {
-      for (const col of row.columns) {
-        for (const item of col.items) {
-          if (isActionItem(item)) continue;
-          const field = resolveLayoutItemField(item, fields);
-          if (!field || !field.required) continue;
-          if (isDocumentNumberFieldType(field.fieldType)) continue;
-          if (item.presentation?.hidden) continue;
-          const slug = field.slug;
-          if (seenRequired.has(slug)) continue;
-          seenRequired.add(slug);
-          const v = values[slug];
-          if (v === undefined || v === null || v === '') {
-            errors[slug] = `${fieldDisplayLabel(field)} is required.`;
-          }
-        }
-      }
-    }
-  }
-
-  const seenLen = new Set<string>();
-  for (const region of regions) {
-    for (const row of region.rows) {
-      for (const col of row.columns) {
-        for (const item of col.items) {
-          if (isActionItem(item)) continue;
-          const field = resolveLayoutItemField(item, fields);
-          if (!field || item.presentation?.hidden) continue;
-          if (!fieldTypeSupportsTextLengthConstraints(field.fieldType)) continue;
-          const slug = field.slug;
-          if (seenLen.has(slug)) continue;
-          seenLen.add(slug);
-          if (errors[slug]) continue;
-          const cfg = (field.config ?? undefined) as Record<string, unknown> | undefined;
-          const maxL = readLengthConstraintFromConfig(cfg, 'maxLength');
-          const minL = readLengthConstraintFromConfig(cfg, 'minLength');
-          if (maxL === undefined && (minL === undefined || minL <= 0)) continue;
-          const raw = values[slug];
-          const str = raw === null || raw === undefined ? '' : String(raw);
-          if (maxL !== undefined && str.length > maxL) {
-            errors[slug] = `At most ${maxL} characters.`;
-          } else if (minL !== undefined && minL > 0 && str.length > 0 && str.length < minL) {
-            errors[slug] = `At least ${minL} characters.`;
-          }
-        }
-      }
-    }
-  }
-
-  return errors;
 }

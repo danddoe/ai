@@ -27,8 +27,32 @@ public class RecordDtos {
             String createdByLabel,
             String updatedByLabel,
             UUID entityStatusId,
-            String entityStatusDisplayLabel
-    ) {}
+            String entityStatusDisplayLabel,
+            /** Scalar-only list summary from a batched SQL read; null when unset, references in summary, or PII parts. */
+            String listSummaryDisplay
+    ) {
+        public static RecordDto withListSummaryDisplay(RecordDto base, String listSummaryDisplay) {
+            return new RecordDto(
+                    base.id(),
+                    base.tenantId(),
+                    base.entityId(),
+                    base.externalId(),
+                    base.businessDocumentNumber(),
+                    base.createdBy(),
+                    base.updatedBy(),
+                    base.status(),
+                    base.values(),
+                    base.links(),
+                    base.createdAt(),
+                    base.updatedAt(),
+                    base.createdByLabel(),
+                    base.updatedByLabel(),
+                    base.entityStatusId(),
+                    base.entityStatusDisplayLabel(),
+                    listSummaryDisplay
+            );
+        }
+    }
 
     public record RecordLookupItemDto(UUID recordId, String displayLabel, Map<String, Object> values) {}
 

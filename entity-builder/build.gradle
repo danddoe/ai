@@ -19,11 +19,16 @@ dependencyManagement {
     }
 }
 
+configurations {
+    hotswapAgent
+}
+
 dependencies {
     implementation project(':audit-core')
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-aop'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
 
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.8'
@@ -43,6 +48,10 @@ dependencies {
 
     developmentOnly 'org.springframework.boot:spring-boot-devtools'
 
+    hotswapAgent('org.hotswapagent:hotswap-agent:2.0.2') {
+        transitive = false
+    }
+
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.security:spring-security-test'
     testImplementation 'org.apache.httpcomponents.client5:httpclient5'
@@ -51,5 +60,22 @@ dependencies {
 
 test {
     useJUnitPlatform()
+}
+
+// bootRun: faster resource picks; optional HotSwapAgent (-PbootHotswap) and/or JDWP (-PbootDebug).
+// HotSwapAgent: use a DCEVM-capable JDK (e.g. JetBrains Runtime, Trava OpenJDK) for redefines beyond stock JVM.
+// DevTools classpath restart stays off in application.yml (Flyway/Cockroach); set SPRING_DEVTOOLS_RESTART_ENABLED=true if you want devtools restarts.
+tasks.named('bootRun') {
+    sourceResources sourceSets.main
+    def runJvmArgs = []
+    if (project.hasProperty('bootHotswap')) {
+        runJvmArgs += '-javaagent:' + configurations.hotswapAgent.singleFile.absolutePath.replace('\\', '/')
+    }
+    if (project.hasProperty('bootDebug')) {
+        runJvmArgs += '-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005'
+    }
+    if (!runJvmArgs.isEmpty()) {
+        jvmArgs = runJvmArgs
+    }
 }
 

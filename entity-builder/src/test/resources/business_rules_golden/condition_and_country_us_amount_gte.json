@@ -1,0 +1,7 @@
+{
+  "op": "and",
+  "children": [
+    { "op": "cmp", "field": "country", "operator": "eq", "value": "US" },
+    { "op": "cmp", "field": "amount", "operator": "gte", "value": 1000 }
+  ]
+}

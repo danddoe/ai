@@ -26,7 +26,9 @@
     "signInFailed": "Sign-in failed",
     "loginFailed": "Login failed",
     "signingIn": "Signing in…",
-    "signIn": "Sign in"
+    "signIn": "Sign in",
+    "sessionExpiredTitle": "Session expired",
+    "sessionExpiredBody": "Your sign-in timed out or the refresh session ended. Sign in again to continue. To stay active longer, your administrator can raise the IAM access-token lifetime (JWT_ACCESS_EXPIRY / app.jwt.access-token-expiration-seconds)."
   },
   "home": {
     "title": "Home",

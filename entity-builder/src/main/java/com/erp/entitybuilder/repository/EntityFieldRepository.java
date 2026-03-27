@@ -12,6 +12,14 @@ public interface EntityFieldRepository extends JpaRepository<EntityField, UUID> 
     List<EntityField> findByEntityId(UUID entityId);
 
     List<EntityField> findByEntityIdOrderBySortOrderAscNameAsc(UUID entityId);
+
+    List<EntityField> findByEntityIdAndStatusOrderBySortOrderAscNameAsc(UUID entityId, String status);
+
     boolean existsByEntityIdAndSlug(UUID entityId, String slug);
+
+    List<EntityField> findByEntityIdAndIncludeInListSummaryDisplayIsTrueAndStatusOrderBySortOrderAscNameAsc(
+            UUID entityId,
+            String status
+    );
 }
 

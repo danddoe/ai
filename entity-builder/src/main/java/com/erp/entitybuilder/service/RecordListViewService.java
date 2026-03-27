@@ -1,5 +1,6 @@
 package com.erp.entitybuilder.service;
 
+import com.erp.entitybuilder.domain.EntityFieldStatuses;
 import com.erp.entitybuilder.domain.RecordListView;
 import com.erp.entitybuilder.repository.EntityDefinitionRepository;
 import com.erp.entitybuilder.repository.EntityFieldRepository;
@@ -182,7 +183,8 @@ public class RecordListViewService {
             return;
         }
         Set<String> have = new HashSet<>();
-        fieldRepository.findByEntityId(entityId).forEach(f -> have.add(f.getSlug()));
+        fieldRepository.findByEntityIdAndStatusOrderBySortOrderAscNameAsc(entityId, EntityFieldStatuses.ACTIVE)
+                .forEach(f -> have.add(f.getSlug()));
         for (String s : wanted) {
             if (!have.contains(s)) {
                 throw new ApiException(HttpStatus.BAD_REQUEST, "bad_request", "Unknown field slug for this entity", Map.of("fieldSlug", s));

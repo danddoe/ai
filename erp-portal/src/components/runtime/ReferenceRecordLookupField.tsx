@@ -12,8 +12,8 @@ import {
   type CSSProperties,
 } from '@mantine/core';
 import {
-  getEntityStatusAssignmentsForField,
   getRecord,
+  isEntityStatusAssignmentDebugEnabled,
   listFields,
   listRecords,
   lookupRecords,
@@ -22,10 +22,15 @@ import {
 } from '../../api/schemas';
 import { useRecordFormRuntime } from './RecordFormRuntimeContext';
 import {
+  ENTITY_STATUS_ASSIGNMENT_ENTITY_SLUG,
+  ENTITY_STATUS_ENTITY_SLUG,
+} from '../../utils/entityStatusCatalog';
+import {
   isEntityStatusReferenceTarget,
   looksLikeRecordUuid,
   readReferenceFieldConfig,
 } from '../../utils/referenceFieldConfig';
+import { buildReferenceRecordLabel, dedupeSlugsPreserveOrder } from '../../utils/referenceRecordDisplayLabel';
 
 type Props = {
   field: EntityFieldDto;
@@ -43,52 +48,6 @@ function formatCell(v: unknown): string {
   if (v === null || v === undefined) return '—';
   if (typeof v === 'object') return JSON.stringify(v);
   return String(v);
-}
-
-/** Preserve schema order; drop duplicate slugs (first occurrence wins). */
-function dedupeSlugsPreserveOrder(columnSlugs: string[]): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const s of columnSlugs) {
-    const t = s.trim();
-    if (!t) continue;
-    const key = t.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(t);
-  }
-  return out;
-}
-
-/**
- * Single-line label: fields in the order saved under {@code referenceLookupDisplaySlugs}, joined by {@code " - "}.
- * If no display columns are configured, falls back to the entity default display field.
- */
-function buildRecordDisplayLabel(
-  rec: RecordDto,
-  defaultDisplayFieldSlug: string | null | undefined,
-  columnSlugs: string[]
-): string {
-  const ordered = dedupeSlugsPreserveOrder(columnSlugs);
-  if (ordered.length === 0) {
-    return resolveLabelFromRecord(rec, defaultDisplayFieldSlug);
-  }
-  return ordered.map((s) => formatCell(rec.values[s])).join(' - ');
-}
-
-function resolveLabelFromRecord(
-  rec: { values: Record<string, unknown> },
-  defaultDisplayFieldSlug: string | null | undefined
-): string {
-  if (defaultDisplayFieldSlug) {
-    const raw = rec.values[defaultDisplayFieldSlug];
-    if (raw !== null && raw !== undefined && String(raw).trim() !== '') {
-      return String(raw);
-    }
-  }
-  const first = Object.values(rec.values).find((x) => x !== null && x !== undefined && String(x).trim() !== '');
-  if (first !== undefined) return String(first);
-  return '—';
 }
 
 export function ReferenceRecordLookupField({
@@ -109,42 +68,78 @@ export function ReferenceRecordLookupField({
   const assignedForEntityId =
     statusRefTarget && hostEntityId?.trim() ? hostEntityId.trim() : undefined;
 
-  /** Only pass field id to list/lookup when field-scoped rows exist (avoids over-filtering). */
-  const [fieldScopeResolved, setFieldScopeResolved] = useState(!statusRefTarget);
-  const [fieldHasScopedAssignments, setFieldHasScopedAssignments] = useState(false);
-
-  useEffect(() => {
-    if (!statusRefTarget || !hostEntityId?.trim() || !field.id?.trim()) {
-      setFieldHasScopedAssignments(false);
-      setFieldScopeResolved(true);
-      return;
-    }
-    let cancelled = false;
-    setFieldScopeResolved(false);
-    void getEntityStatusAssignmentsForField(hostEntityId.trim(), field.id.trim())
-      .then((rows) => {
-        if (!cancelled) {
-          setFieldHasScopedAssignments(rows.length > 0);
-          setFieldScopeResolved(true);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setFieldHasScopedAssignments(false);
-          setFieldScopeResolved(true);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [statusRefTarget, hostEntityId, field.id]);
-
+  /**
+   * Pass host reference field id whenever known; the API resolves scope (field rows win, else entity
+   * definition). Avoids an extra schema read and matches users who have records:read but not schema:read.
+   */
   const assignedForEntityFieldId =
-    statusRefTarget && fieldHasScopedAssignments && field.id?.trim() ? field.id.trim() : undefined;
+    statusRefTarget && assignedForEntityId && field.id?.trim() ? field.id.trim() : undefined;
   const targetEntity = cfg.targetEntitySlug ? entityBySlug[cfg.targetEntitySlug] : undefined;
   const targetEntityId = targetEntity?.id;
   const defaultDisplaySlug = targetEntity?.defaultDisplayFieldSlug ?? undefined;
   const columnSlugs = cfg.lookupDisplaySlugs;
+
+  useEffect(() => {
+    if (!isEntityStatusAssignmentDebugEnabled()) return;
+    if ((field.fieldType || '').toLowerCase() !== 'reference') return;
+    const issues: string[] = [];
+    const slugNorm = (cfg.targetEntitySlug || '').trim().toLowerCase();
+    if (slugNorm === ENTITY_STATUS_ASSIGNMENT_ENTITY_SLUG) {
+      issues.push(
+        `Wrong target: "${ENTITY_STATUS_ASSIGNMENT_ENTITY_SLUG}" is the assignment-configuration entity (join rows), not the status catalog. Edit the field and set target entity slug to "${ENTITY_STATUS_ENTITY_SLUG}" so the dropdown lists status records; allowed values still come from your assignments.`
+      );
+    } else if (!statusRefTarget) {
+      issues.push(
+        `Not an entity_status reference (targetEntitySlug is "${cfg.targetEntitySlug || ''}"; use "${ENTITY_STATUS_ENTITY_SLUG}" for a status picker with assignment scoping).`
+      );
+    }
+    if (cfg.uiMode !== 'dropdown') {
+      issues.push(
+        `referenceUiMode is "${cfg.uiMode}" — dropdown batch (listRecords) only runs when UI mode is "dropdown". Search mode uses lookup API after you type 2+ chars in the modal.`
+      );
+    }
+    if (!tenantId) issues.push('tenantId is missing (session / auth).');
+    if (!hostEntityId?.trim() && statusRefTarget) {
+      issues.push('hostEntityId is missing (RecordFormRuntimeProvider). assignedForEntityId will be omitted.');
+    }
+    if (!field.id?.trim() && statusRefTarget) {
+      issues.push('field.id is missing — assignedForEntityFieldId will be omitted.');
+    }
+    if (!cfg.targetEntitySlug) issues.push('targetEntitySlug is missing in field config.');
+    if (cfg.targetEntitySlug && !targetEntityId) {
+      issues.push(
+        `No entity definition in page map for slug "${cfg.targetEntitySlug}". buildEntityBySlugForReferenceFields only loads targets used on this entity; ensure listEntities() includes entity_status.`
+      );
+    }
+    const willRunDropdownList =
+      cfg.uiMode === 'dropdown' && !!tenantId && !!targetEntityId;
+    console.log('[erpDebugEntityStatus] reference field snapshot (why you may see no listRecords logs)', {
+      fieldSlug: slug,
+      fieldId: field.id ?? null,
+      targetEntitySlug: cfg.targetEntitySlug || null,
+      statusRefTarget,
+      uiMode: cfg.uiMode,
+      tenantId: tenantId ?? null,
+      hostEntityId: hostEntityId ?? null,
+      assignedForEntityId: assignedForEntityId ?? null,
+      assignedForEntityFieldId: assignedForEntityFieldId ?? null,
+      targetEntityId: targetEntityId ?? null,
+      willRunDropdownList,
+      issues,
+    });
+  }, [
+    field.fieldType,
+    field.id,
+    slug,
+    cfg.targetEntitySlug,
+    cfg.uiMode,
+    statusRefTarget,
+    tenantId,
+    hostEntityId,
+    targetEntityId,
+    assignedForEntityId,
+    assignedForEntityFieldId,
+  ]);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -221,24 +216,36 @@ export function ReferenceRecordLookupField({
       setDropdownTotal(0);
       return;
     }
-    if (statusRefTarget && !fieldScopeResolved) {
-      setDropdownRecords([]);
-      setDropdownTotal(0);
-      setDropdownLoading(true);
-      setDropdownError(null);
-      return;
-    }
     let cancelled = false;
     setDropdownLoading(true);
     setDropdownError(null);
-    void listRecords(tenantId, targetEntityId, {
+    const recordListParams = {
       page: 1,
       pageSize: 200,
       assignedForEntityId: assignedForEntityId ?? undefined,
       assignedForEntityFieldId: assignedForEntityFieldId ?? undefined,
-    })
+    };
+    if (isEntityStatusAssignmentDebugEnabled() && statusRefTarget) {
+      console.log('[erpDebugEntityStatus] reference dropdown → listRecords context', {
+        note:
+          'The server applies entity_status_assignment using assignedForEntityId (host entity def) and assignedForEntityFieldId (reference field def). The dropdown does not call …/entity-status-assignments.',
+        fieldSlug: slug,
+        fieldId: field.id ?? null,
+        targetEntitySlug: cfg.targetEntitySlug,
+        entity_statusMirrorEntityId: targetEntityId,
+        ...recordListParams,
+      });
+    }
+    void listRecords(tenantId, targetEntityId, recordListParams)
       .then((page) => {
         if (cancelled) return;
+        if (isEntityStatusAssignmentDebugEnabled() && statusRefTarget) {
+          console.log('[erpDebugEntityStatus] reference dropdown ← listRecords response', {
+            fieldSlug: slug,
+            itemCount: page.items.length,
+            total: page.total,
+          });
+        }
         setDropdownRecords(page.items);
         setDropdownTotal(page.total);
       })
@@ -258,17 +265,10 @@ export function ReferenceRecordLookupField({
     assignedForEntityId,
     assignedForEntityFieldId,
     statusRefTarget,
-    fieldScopeResolved,
   ]);
 
   useEffect(() => {
     if (!modalOpen || !tenantId || !targetEntityId) {
-      return;
-    }
-    if (statusRefTarget && !fieldScopeResolved) {
-      setLookupItems([]);
-      setLookupLoading(false);
-      setLookupError(null);
       return;
     }
     if (debouncedTerm.length < 2) {
@@ -280,6 +280,14 @@ export function ReferenceRecordLookupField({
     let cancelled = false;
     setLookupLoading(true);
     setLookupError(null);
+    if (isEntityStatusAssignmentDebugEnabled() && statusRefTarget) {
+      console.log('[erpDebugEntityStatus] reference search → lookupRecords', {
+        fieldSlug: slug,
+        term: debouncedTerm,
+        assignedForEntityId: assignedForEntityId ?? null,
+        assignedForEntityFieldId: assignedForEntityFieldId ?? null,
+      });
+    }
     void lookupRecords(tenantId, targetEntityId, {
       term: debouncedTerm,
       displaySlugs: cfg.lookupDisplaySlugs,
@@ -308,7 +316,6 @@ export function ReferenceRecordLookupField({
     assignedForEntityId,
     assignedForEntityFieldId,
     statusRefTarget,
-    fieldScopeResolved,
   ]);
 
   const openModal = useCallback(() => {
@@ -337,7 +344,7 @@ export function ReferenceRecordLookupField({
   const dropdownSelectData = useMemo(() => {
     const rows = dropdownRecords.map((rec) => ({
       value: rec.id,
-      label: buildRecordDisplayLabel(rec, defaultDisplaySlug, columnSlugs),
+      label: buildReferenceRecordLabel(rec, defaultDisplaySlug, columnSlugs),
     }));
     if (strVal && looksLikeRecordUuid(strVal) && !rows.some((r) => r.value === strVal)) {
       rows.unshift({

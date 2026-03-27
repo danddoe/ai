@@ -1,31 +1,40 @@
 import { Button } from '@mantine/core';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
+  addRecordLink,
+  activeEntityFields,
   createRecord,
   getEntity,
   getRecord,
   isDocumentNumberFieldType,
   listFields,
   listEntities,
+  listEntityRelationships,
   listFormLayouts,
+  listBusinessRules,
   listRecordAuditEvents,
   patchRecord,
   type AuditEventDto,
   type EntityDto,
   type EntityFieldDto,
+  type EntityRelationshipDto,
   type FormLayoutDto,
   type RecordDto,
+  type BusinessRuleDto,
 } from '../api/schemas';
 import { useAuth } from '../auth/AuthProvider';
 import { AuditEventsTable } from '../components/audit/AuditEventsTable';
 import { AuditPayloadModal } from '../components/AuditPayloadModal';
 import { RecordFormRuntimeProvider } from '../components/runtime/RecordFormRuntimeContext';
+import { buildInlineFieldErrorsForRegions } from '../components/runtime/buildInlineFieldErrorsForRegions';
+import { LayoutV2RuntimeRenderer } from '../components/runtime/LayoutV2RuntimeRenderer';
+import type { LinkAfterCreateState } from '../components/runtime/RelatedRecordsRegion';
 import {
-  buildInlineFieldErrorsForRegions,
-  LayoutV2RuntimeRenderer,
-} from '../components/runtime/LayoutV2RuntimeRenderer';
-import { buildEntityBySlugForReferenceFields } from '../utils/referenceFieldConfig';
+  buildEntityBySlugForReferenceFields,
+  readReferenceFieldConfig,
+  readReferenceRelationshipId,
+} from '../utils/referenceFieldConfig';
 import {
   assertCoreDomainRoutedOrThrow,
   createCoreMasterRow,
@@ -37,6 +46,7 @@ import {
 import { isCoreDomainField } from '../utils/fieldStorage';
 import { isActionItem, parseLayoutV2, regionsForWizardStep, resolveLayoutItemField } from '../utils/layoutV2';
 import type { LayoutV2 } from '../types/formLayout';
+import { computeFieldUiOverrides } from '../utils/businessRuleUi';
 
 function findFirstWizardStepWithFieldError(
   layout: LayoutV2,
@@ -68,6 +78,72 @@ function shortUuid(id: string): string {
   return id.length > 10 ? `${id.slice(0, 8)}…` : id;
 }
 
+/**
+ * When creating a child from a related-records "Add", set the parent reference field to the parent record id.
+ * Uses relationship {@code toFieldSlug} when present; otherwise finds the reference field on the child that targets
+ * the parent entity (and prefers {@code config.relationshipId} when multiple match).
+ */
+function buildCreateInitialValuesFromLink(
+  locState: unknown,
+  childEntityId: string,
+  childFieldsRaw: EntityFieldDto[],
+  allEntities: EntityDto[],
+  relationships: EntityRelationshipDto[]
+): Record<string, unknown> {
+  const lac = (locState as { linkAfterCreate?: LinkAfterCreateState } | null)?.linkAfterCreate;
+  const parentRecordId = lac?.parentRecordId?.trim();
+  const parentEntityId = lac?.parentEntityId?.trim();
+  if (!lac || !parentRecordId || !parentEntityId) return {};
+
+  const childFields = activeEntityFields(childFieldsRaw);
+  const rel =
+    relationships.find(
+      (r) =>
+        r.slug === lac.relationshipSlug &&
+        r.toEntityId === childEntityId &&
+        r.fromEntityId === parentEntityId
+    ) ?? relationships.find((r) => r.slug === lac.relationshipSlug && r.toEntityId === childEntityId);
+  const candidates: string[] = [];
+  const add = (s: string | null | undefined) => {
+    const t = s?.trim();
+    if (t && !candidates.includes(t)) candidates.push(t);
+  };
+  add(rel?.toFieldSlug);
+  add(lac.toFieldSlug);
+
+  let slug: string | null = null;
+  for (const c of candidates) {
+    const f = childFields.find((x) => x.slug === c && (x.fieldType || '').toLowerCase() === 'reference');
+    if (f) {
+      slug = c;
+      break;
+    }
+  }
+
+  if (!slug) {
+    const parentSlug = allEntities.find((e) => e.id === parentEntityId)?.slug?.trim().toLowerCase();
+    if (parentSlug) {
+      const matching: EntityFieldDto[] = [];
+      for (const f of childFields) {
+        if ((f.fieldType || '').toLowerCase() !== 'reference') continue;
+        if (readReferenceFieldConfig(f.config).targetEntitySlug !== parentSlug) continue;
+        matching.push(f);
+      }
+      if (matching.length === 1) {
+        slug = matching[0].slug;
+      } else if (matching.length > 1 && rel?.id) {
+        const byRel = matching.find((f) => readReferenceRelationshipId(f.config) === rel.id);
+        slug = (byRel ?? matching[0]).slug;
+      } else if (matching.length > 1) {
+        slug = matching[0].slug;
+      }
+    }
+  }
+
+  if (!slug) return {};
+  return { [slug]: parentRecordId };
+}
+
 function formatSavedTimestamp(date: Date): string {
   const datePart = date.toLocaleDateString(undefined, {
     year: 'numeric',
@@ -84,13 +160,15 @@ function formatSavedTimestamp(date: Date): string {
 export function RecordFormPage() {
   const { entityId = '', recordId = '' } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { tenantId, canRecordsRead, canRecordsWrite, canPiiRead } = useAuth();
   const isCreate = recordId === 'new';
 
   const [entityName, setEntityName] = useState<string>('');
   const [layoutDto, setLayoutDto] = useState<FormLayoutDto | null>(null);
   const [layout, setLayout] = useState<LayoutV2 | null>(null);
-  const [fields, setFields] = useState<EntityFieldDto[]>([]);
+  const [allFields, setAllFields] = useState<EntityFieldDto[]>([]);
+  const fields = useMemo(() => activeEntityFields(allFields), [allFields]);
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [wizardStep, setWizardStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -107,6 +185,8 @@ export function RecordFormPage() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [recordDetail, setRecordDetail] = useState<RecordDto | null>(null);
   const [allEntities, setAllEntities] = useState<EntityDto[]>([]);
+  const [relationships, setRelationships] = useState<EntityRelationshipDto[]>([]);
+  const [uiRules, setUiRules] = useState<BusinessRuleDto[]>([]);
 
   const entityBySlug = useMemo(
     () => buildEntityBySlugForReferenceFields(fields, allEntities),
@@ -118,11 +198,22 @@ export function RecordFormPage() {
     layout?.runtime?.recordEntry?.flow === 'wizard' && wizardIds.length > 0;
   const wizardLast = isWizard && wizardStep >= wizardIds.length - 1;
 
+  const linkAfterCreate = (location.state as { linkAfterCreate?: LinkAfterCreateState } | null)?.linkAfterCreate;
+
+  const parentBreadcrumbLabel = useMemo(() => {
+    if (!linkAfterCreate) return null;
+    const fromNav = linkAfterCreate.parentEntityName?.trim();
+    if (fromNav) return fromNav;
+    return allEntities.find((e) => e.id === linkAfterCreate.parentEntityId)?.name?.trim() || null;
+  }, [linkAfterCreate, allEntities]);
+
   const regionsToRender = useMemo(() => {
     if (!layout) return [];
     if (isWizard) return regionsForWizardStep(layout, wizardStep);
     return layout.regions;
   }, [layout, isWizard, wizardStep]);
+
+  const fieldUiOverrides = useMemo(() => computeFieldUiOverrides(uiRules, values), [uiRules, values]);
 
   const onAuditViewPayload = useCallback((e: AuditEventDto) => setAuditPayloadOpen(e), []);
 
@@ -135,23 +226,33 @@ export function RecordFormPage() {
     setError(null);
     setLoading(true);
     try {
-      const [ent, flds, layouts, ents] = await Promise.all([
+      const [ent, flds, layouts, ents, rels] = await Promise.all([
         getEntity(entityId),
         listFields(entityId),
         listFormLayouts(entityId),
         listEntities(),
+        listEntityRelationships(),
       ]);
       setAllEntities(ents);
+      setRelationships(rels);
       setEntityName(ent.name);
       setEntitySlug(ent.slug || '');
-      setFields(flds);
+      setAllFields(flds);
       const def = layouts.find((l) => l.isDefault) ?? null;
       setLayoutDto(def);
       if (!def) {
         setLayout(null);
         setValues({});
         setFieldErrors({});
+        setUiRules([]);
         return;
+      }
+      try {
+        setUiRules(
+          await listBusinessRules(entityId, { surface: 'UI', formLayoutId: def.id, activeOnly: true })
+        );
+      } catch {
+        setUiRules([]);
       }
       const parsed = parseLayoutV2(def.layout);
       setLayout(parsed);
@@ -164,7 +265,7 @@ export function RecordFormPage() {
 
       if (isCreate) {
         setRecordDetail(null);
-        setValues({});
+        setValues(buildCreateInitialValuesFromLink(location.state, entityId, flds, ents, rels));
         setWizardStep(0);
         setFieldErrors({});
         return;
@@ -193,12 +294,14 @@ export function RecordFormPage() {
       setLayout(null);
       setValues({});
       setFieldErrors({});
+      setUiRules([]);
       setRecordDetail(null);
       setAllEntities([]);
+      setRelationships([]);
     } finally {
       setLoading(false);
     }
-  }, [tenantId, entityId, recordId, canRecordsRead, isCreate]);
+  }, [tenantId, entityId, recordId, canRecordsRead, isCreate, location.state]);
 
   useEffect(() => {
     void load();
@@ -275,22 +378,22 @@ export function RecordFormPage() {
 
   function validateCurrentStep(): boolean {
     if (!layout) return false;
-    const errs = buildInlineFieldErrorsForRegions(regionsToRender, fields, values);
+    const errs = buildInlineFieldErrorsForRegions(regionsToRender, fields, values, fieldUiOverrides);
     setFieldErrors(errs);
     return Object.keys(errs).length === 0;
   }
 
   function resetFormForAnotherRecord() {
-    setValues({});
+    setValues(buildCreateInitialValuesFromLink(location.state, entityId, allFields, allEntities, relationships));
     setWizardStep(0);
     setFieldErrors({});
     setRecordDetail(null);
     setActiveTab('form');
   }
 
-  async function save(opts?: { addAnother?: boolean }) {
+  async function save(opts?: { addAnother?: boolean; backToList?: boolean }) {
     if (!tenantId || !layout || !canRecordsWrite) return;
-    const errs = buildInlineFieldErrorsForRegions(layout.regions, fields, values);
+    const errs = buildInlineFieldErrorsForRegions(layout.regions, fields, values, fieldUiOverrides);
     setFieldErrors(errs);
     if (Object.keys(errs).length > 0) {
       if (isWizard && wizardIds.length > 0) {
@@ -307,9 +410,11 @@ export function RecordFormPage() {
     try {
       assertCoreDomainRoutedOrThrow(entitySlug, fields);
       const hybrid = isCoreServiceHybridEntitySlug(entitySlug);
+      const linkAfterCreate = (location.state as { linkAfterCreate?: LinkAfterCreateState } | null)?.linkAfterCreate;
 
       if (isCreate) {
         const addAnother = opts?.addAnother === true;
+        const backToList = opts?.backToList === true;
         if (hybrid) {
           const coreId = await createCoreMasterRow(tenantId, entitySlug, fields, values);
           const created = await createRecord(tenantId, entityId, {
@@ -317,11 +422,25 @@ export function RecordFormPage() {
             externalId: coreId,
             ...(bdn !== undefined ? { businessDocumentNumber: bdn } : {}),
           });
+          if (linkAfterCreate) {
+            await addRecordLink(tenantId, linkAfterCreate.parentRecordId, {
+              relationshipSlug: linkAfterCreate.relationshipSlug,
+              toRecordId: created.id,
+            });
+            const savedAt = new Date().toISOString();
+            navigate(`/entities/${linkAfterCreate.parentEntityId}/records/${linkAfterCreate.parentRecordId}`, {
+              replace: true,
+              state: { recordSaveFlash: { at: savedAt } },
+            });
+            return;
+          }
           if (addAnother) {
             resetFormForAnotherRecord();
             setSaveSuccess(
               `Record saved (${shortUuid(created.id)}). You can add another below.`
             );
+          } else if (backToList) {
+            navigate(`/entities/${entityId}/records`);
           } else {
             const savedAt = new Date().toISOString();
             navigate(`/entities/${entityId}/records/${created.id}`, {
@@ -334,11 +453,25 @@ export function RecordFormPage() {
             values: payload,
             ...(bdn !== undefined ? { businessDocumentNumber: bdn } : {}),
           });
+          if (linkAfterCreate) {
+            await addRecordLink(tenantId, linkAfterCreate.parentRecordId, {
+              relationshipSlug: linkAfterCreate.relationshipSlug,
+              toRecordId: created.id,
+            });
+            const savedAt = new Date().toISOString();
+            navigate(`/entities/${linkAfterCreate.parentEntityId}/records/${linkAfterCreate.parentRecordId}`, {
+              replace: true,
+              state: { recordSaveFlash: { at: savedAt } },
+            });
+            return;
+          }
           if (addAnother) {
             resetFormForAnotherRecord();
             setSaveSuccess(
               `Record saved (${shortUuid(created.id)}). You can add another below.`
             );
+          } else if (backToList) {
+            navigate(`/entities/${entityId}/records`);
           } else {
             const savedAt = new Date().toISOString();
             navigate(`/entities/${entityId}/records/${created.id}`, {
@@ -356,12 +489,20 @@ export function RecordFormPage() {
         }
         await patchCoreMasterRow(tenantId, entitySlug, rec.externalId, fields, values);
         await patchRecord(tenantId, entityId, recordId, { values: payload });
+        if (opts?.backToList === true) {
+          navigate(`/entities/${entityId}/records`);
+          return;
+        }
         await load();
         setFieldErrors({});
         setSaveSuccess(`Saved successfully at ${formatSavedTimestamp(new Date())}.`);
         void loadAuditHistory();
       } else {
         await patchRecord(tenantId, entityId, recordId, { values: payload });
+        if (opts?.backToList === true) {
+          navigate(`/entities/${entityId}/records`);
+          return;
+        }
         await load();
         setFieldErrors({});
         setSaveSuccess(`Saved successfully at ${formatSavedTimestamp(new Date())}.`);
@@ -399,6 +540,17 @@ export function RecordFormPage() {
       <nav className="breadcrumb">
         <Link to="/entities">Entities</Link>
         <span aria-hidden> / </span>
+        {linkAfterCreate ? (
+          <>
+            <Link
+              to={`/entities/${linkAfterCreate.parentEntityId}/records/${linkAfterCreate.parentRecordId}`}
+              title="Open parent record"
+            >
+              {parentBreadcrumbLabel || 'Parent record'}
+            </Link>
+            <span aria-hidden> / </span>
+          </>
+        ) : null}
         <Link to={`/entities/${entityId}/records`}>{entityName || '…'}</Link>
         <span aria-hidden> / </span>
         <span>{isCreate ? 'New record' : 'Edit record'}</span>
@@ -449,6 +601,14 @@ export function RecordFormPage() {
             <>
               <Button type="button" disabled={saving || !layout} onClick={() => void save()}>
                 {saving ? 'Saving…' : 'Save'}
+              </Button>
+              <Button
+                type="button"
+                variant="default"
+                disabled={saving || !layout}
+                onClick={() => void save({ backToList: true })}
+              >
+                {saving ? 'Saving…' : 'Save & back to list'}
               </Button>
               {isCreate && (
                 <Button
@@ -573,6 +733,19 @@ export function RecordFormPage() {
             canPiiRead={canPiiRead}
             useTabGroups={!isWizard}
             fieldErrors={fieldErrors}
+            fieldUiOverrides={fieldUiOverrides}
+            relatedContext={
+              tenantId
+                ? {
+                    tenantId,
+                    hostEntityId: entityId,
+                    parentRecordId: isCreate ? null : recordId,
+                    relationships,
+                    allEntities,
+                    canWrite: canRecordsWrite,
+                  }
+                : undefined
+            }
             onLayoutAction={(a) => {
               if (a === 'save') {
                 if (canRecordsWrite) void save();

@@ -107,13 +107,14 @@ class EntityFieldsE2ETest extends AbstractEntityBuilderE2ETest {
         assertThat(clearFormatResp.getBody().get("formatString")).isNull();
 
         // Delete field
-        ResponseEntity<Void> deleteResp = restTemplate.exchange(
+        ResponseEntity<Map> deleteResp = restTemplate.exchange(
                 baseUrl + "/v1/entities/" + entityId + "/fields/" + fieldId,
                 HttpMethod.DELETE,
                 new HttpEntity<>(null, headers),
-                Void.class
+                Map.class
         );
         assertThat(deleteResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(deleteResp.getBody().get("outcome")).isEqualTo("DELETED");
 
         // Verify deleted
         ResponseEntity<Map> getAfterResp = restTemplate.exchange(
@@ -281,5 +282,74 @@ class EntityFieldsE2ETest extends AbstractEntityBuilderE2ETest {
         );
         assertThat(getEn.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(getEn.getBody().get("displayLabel")).isEqualTo("List price");
+    }
+
+    private static final List<String> SCHEMA_AND_RECORDS_PERMS = List.of(
+            "entity_builder:schema:read",
+            "entity_builder:schema:write",
+            "entity_builder:records:read",
+            "entity_builder:records:write"
+    );
+
+    @Test
+    void endToEnd_deleteField_deactivatesWhenRecordHoldsValue() {
+        Assumptions.assumeTrue(jdbcTemplate != null, "E2E skipped: no CockroachDB connection");
+
+        UUID userId = UUID.randomUUID();
+        UUID tenantId = UUID.randomUUID();
+        var headers = authHeaders(userId, tenantId, SCHEMA_AND_RECORDS_PERMS);
+
+        Map<String, Object> createEntity = Map.of("name", "Widget", "slug", "widget_del", "status", "ACTIVE");
+        ResponseEntity<Map> entityResp = restTemplate.exchange(
+                baseUrl + "/v1/entities",
+                HttpMethod.POST,
+                new HttpEntity<>(createEntity, headers),
+                Map.class
+        );
+        assertThat(entityResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        String entityId = String.valueOf(entityResp.getBody().get("id"));
+
+        Map<String, Object> createField = new LinkedHashMap<>();
+        createField.put("name", "SKU");
+        createField.put("slug", "sku");
+        createField.put("fieldType", "string");
+        createField.put("required", false);
+        createField.put("pii", false);
+        ResponseEntity<Map> createFieldResp = restTemplate.exchange(
+                baseUrl + "/v1/entities/" + entityId + "/fields",
+                HttpMethod.POST,
+                new HttpEntity<>(createField, headers),
+                Map.class
+        );
+        assertThat(createFieldResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        String fieldId = String.valueOf(createFieldResp.getBody().get("id"));
+
+        Map<String, Object> createRecord = Map.of("values", Map.of("name", "x", "sku", "ABC-1"));
+        ResponseEntity<Map> recordResp = restTemplate.exchange(
+                baseUrl + "/v1/tenants/" + tenantId + "/entities/" + entityId + "/records",
+                HttpMethod.POST,
+                new HttpEntity<>(createRecord, headers),
+                Map.class
+        );
+        assertThat(recordResp.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+
+        ResponseEntity<Map> deleteResp = restTemplate.exchange(
+                baseUrl + "/v1/entities/" + entityId + "/fields/" + fieldId,
+                HttpMethod.DELETE,
+                new HttpEntity<>(null, headers),
+                Map.class
+        );
+        assertThat(deleteResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(deleteResp.getBody().get("outcome")).isEqualTo("DEACTIVATED");
+
+        ResponseEntity<Map> getFieldResp = restTemplate.exchange(
+                baseUrl + "/v1/entities/" + entityId + "/fields/" + fieldId,
+                HttpMethod.GET,
+                new HttpEntity<>(null, headers),
+                Map.class
+        );
+        assertThat(getFieldResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(getFieldResp.getBody().get("status")).isEqualTo("INACTIVE");
+        assertThat(getFieldResp.getBody().get("required")).isEqualTo(false);
     }
 }

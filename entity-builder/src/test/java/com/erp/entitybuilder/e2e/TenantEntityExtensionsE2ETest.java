@@ -152,13 +152,14 @@ class TenantEntityExtensionsE2ETest extends AbstractEntityBuilderE2ETest {
         );
         assertThat(metaName).isEqualTo("Account Extras Renamed");
 
-        ResponseEntity<Void> deleteFieldResp = restTemplate.exchange(
+        ResponseEntity<Map> deleteFieldResp = restTemplate.exchange(
                 baseUrl + "/v1/entities/" + extensionEntityId + "/fields/" + fieldId,
                 HttpMethod.DELETE,
                 new HttpEntity<>(null, headers),
-                Void.class
+                Map.class
         );
         assertThat(deleteFieldResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(deleteFieldResp.getBody().get("outcome")).isEqualTo("DELETED");
 
         Integer mirrorAfterFieldDelete = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM tenant_entity_extension_fields WHERE tenant_entity_extension_id = ?",

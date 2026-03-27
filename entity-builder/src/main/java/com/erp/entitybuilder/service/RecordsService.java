@@ -13,6 +13,7 @@ import com.erp.entitybuilder.security.EntityBuilderSecurity;
 import com.erp.entitybuilder.service.query.RecordFilterQueryExecutor;
 import com.erp.entitybuilder.service.query.RecordFilterValidator;
 import com.erp.entitybuilder.service.query.ResolvedFilter;
+import com.erp.entitybuilder.service.rules.BusinessRuleEngine;
 import com.erp.entitybuilder.service.search.FieldSearchability;
 import com.erp.entitybuilder.service.search.SearchLikeEscape;
 import com.erp.entitybuilder.service.storage.FieldStorage;
@@ -68,6 +69,8 @@ public class RecordsService {
     private final EntityBuilderSecurity entityBuilderSecurity;
     private final EntityStatusLabelService entityStatusLabelService;
     private final EntityStatusAssignmentRepository entityStatusAssignmentRepository;
+    private final BusinessRuleEngine businessRuleEngine;
+    private final RecordListScalarSummaryService recordListScalarSummaryService;
 
     private final ObjectMapper canonicalMapper;
     private final ObjectMapper responseMapper;
@@ -92,6 +95,8 @@ public class RecordsService {
             EntityBuilderSecurity entityBuilderSecurity,
             EntityStatusLabelService entityStatusLabelService,
             EntityStatusAssignmentRepository entityStatusAssignmentRepository,
+            BusinessRuleEngine businessRuleEngine,
+            RecordListScalarSummaryService recordListScalarSummaryService,
             @Autowired(required = false) AuditLogWriter auditLogWriter
     ) {
         this.entityRepository = entityRepository;
@@ -113,6 +118,8 @@ public class RecordsService {
         this.entityBuilderSecurity = entityBuilderSecurity;
         this.entityStatusLabelService = entityStatusLabelService;
         this.entityStatusAssignmentRepository = entityStatusAssignmentRepository;
+        this.businessRuleEngine = businessRuleEngine;
+        this.recordListScalarSummaryService = recordListScalarSummaryService;
         this.auditLogWriter = auditLogWriter;
 
         this.canonicalMapper = new ObjectMapper();
@@ -137,14 +144,20 @@ public class RecordsService {
 
         EntityDefinition entity = entitySchemaService.resolveEntityForTenantAccess(tenantId, entityId);
 
-        List<EntityField> fields = fieldRepository.findByEntityId(entityId);
+        List<EntityField> allFieldsOrdered = fieldRepository.findByEntityIdOrderBySortOrderAscNameAsc(entityId);
+        List<EntityField> activeFields = new ArrayList<>();
+        for (EntityField f : allFieldsOrdered) {
+            if (EntityFieldStatuses.isActive(f)) {
+                activeFields.add(f);
+            }
+        }
         Map<String, EntityField> fieldBySlug = new HashMap<>();
-        for (EntityField f : fields) {
+        for (EntityField f : activeFields) {
             fieldBySlug.put(f.getSlug(), f);
         }
 
         Map<String, Object> effectiveValues = new LinkedHashMap<>(values);
-        applyOptimisticVersionDefaultOnCreate(effectiveValues, fields);
+        applyOptimisticVersionDefaultOnCreate(effectiveValues, allFieldsOrdered);
         values = effectiveValues;
 
         for (String providedSlug : values.keySet()) {
@@ -159,7 +172,11 @@ public class RecordsService {
             }
         }
 
-        for (EntityField f : fields) {
+        Map<String, Object> ruleCtx = buildCreateRuleValueSnapshot(activeFields, values, businessDocumentNumber);
+        businessRuleEngine.applyServerRules(tenantId, entityId, BusinessRuleTrigger.BEFORE_CREATE, ruleCtx, fieldBySlug);
+        values = ruleCtx;
+
+        for (EntityField f : activeFields) {
             if (!f.isRequired() || FieldStorage.isCoreDomain(f) || FieldTypes.isDocumentNumber(f)
                     || FieldTypes.isOptimisticVersionField(f)) {
                 continue;
@@ -196,7 +213,7 @@ public class RecordsService {
 
         String bdn = resolveBusinessDocumentNumberForCreate(businessDocumentNumber, values, fieldBySlug);
         if (bdn == null) {
-            bdn = documentNumberGenerationService.generateIfAbsent(tenantId, entityId, fields).orElse(null);
+            bdn = documentNumberGenerationService.generateIfAbsent(tenantId, entityId, allFieldsOrdered).orElse(null);
         }
         if (bdn != null) {
             Optional<EntityRecord> existingByBdn = recordRepository.findByTenantIdAndEntityIdAndBusinessDocumentNumber(tenantId, entityId, bdn);
@@ -218,7 +235,7 @@ public class RecordsService {
         UUID recordId = record.getId();
 
         // Save EAV field values only (CORE_DOMAIN metadata fields have no persisted values here)
-        for (EntityField f : fields) {
+        for (EntityField f : activeFields) {
             if (FieldStorage.isCoreDomain(f) || FieldTypes.isDocumentNumber(f)) {
                 continue;
             }
@@ -383,7 +400,7 @@ public class RecordsService {
         List<RecordDtos.RecordDto> items = p.getContent().stream()
                 .map(r -> toResponse(r.getId(), tenantId, piiReadPermission).getRecordDto())
                 .toList();
-        return new PageResult(items, page, size, p.getTotalElements());
+        return new PageResult(enrichListSummaries(tenantId, entityId, items, piiReadPermission), page, size, p.getTotalElements());
     }
 
     /**
@@ -398,7 +415,7 @@ public class RecordsService {
     ) {
         entitySchemaService.resolveEntityForTenantAccess(tenantId, entityId);
 
-        List<EntityField> fields = fieldRepository.findByEntityId(entityId);
+        List<EntityField> fields = activeEntityFieldsOrdered(entityId);
         ResolvedFilter resolved = recordFilterValidator.validate(request.getFilter(), fields, piiReadPermission);
 
         int pageIndex = Math.max(0, request.getPage() - 1);
@@ -412,7 +429,29 @@ public class RecordsService {
         List<RecordDtos.RecordDto> items = ids.stream()
                 .map(id -> toResponse(id, tenantId, piiReadPermission).getRecordDto())
                 .toList();
-        return new PageResult(items, request.getPage(), size, total);
+        return new PageResult(enrichListSummaries(tenantId, entityId, items, piiReadPermission), request.getPage(), size, total);
+    }
+
+    private List<RecordDtos.RecordDto> enrichListSummaries(
+            UUID tenantId,
+            UUID entityId,
+            List<RecordDtos.RecordDto> items,
+            boolean piiReadPermission
+    ) {
+        if (items.isEmpty()) {
+            return items;
+        }
+        List<UUID> ids = items.stream().map(RecordDtos.RecordDto::id).toList();
+        Map<UUID, String> summaries = recordListScalarSummaryService.loadScalarSummaries(tenantId, entityId, ids, piiReadPermission);
+        if (summaries.isEmpty()) {
+            return items;
+        }
+        return items.stream()
+                .map(dto -> {
+                    String s = summaries.get(dto.id());
+                    return s != null ? RecordDtos.RecordDto.withListSummaryDisplay(dto, s) : dto;
+                })
+                .toList();
     }
 
     private static String resolveRecordSortColumn(RecordQueryDtos.RecordSort sort) {
@@ -455,12 +494,20 @@ public class RecordsService {
         UUID valueTenantId = record.getTenantId();
 
         if (values == null) values = Map.of();
-        List<EntityField> fields = fieldRepository.findByEntityId(entityId);
+        List<EntityField> allFieldsOrdered = fieldRepository.findByEntityIdOrderBySortOrderAscNameAsc(entityId);
+        List<EntityField> fields = new ArrayList<>();
+        for (EntityField f : allFieldsOrdered) {
+            if (EntityFieldStatuses.isActive(f)) {
+                fields.add(f);
+            }
+        }
         Map<String, EntityField> fieldBySlug = new HashMap<>();
-        for (EntityField f : fields) fieldBySlug.put(f.getSlug(), f);
+        for (EntityField f : fields) {
+            fieldBySlug.put(f.getSlug(), f);
+        }
 
         EntityField optimisticVersionField = null;
-        for (EntityField f : fields) {
+        for (EntityField f : allFieldsOrdered) {
             if (FieldTypes.isOptimisticVersionField(f)) {
                 optimisticVersionField = f;
                 break;
@@ -516,6 +563,25 @@ public class RecordsService {
                 continue;
             }
         }
+
+        Map<String, Object> currentRuleSnapshot =
+                loadRuleEvaluationSnapshot(recordId, record, fields, valueTenantId, piiReadPermission);
+        Map<String, Object> proposed = new LinkedHashMap<>(currentRuleSnapshot);
+        proposed.putAll(valuesToApply);
+        businessRuleEngine.applyServerRules(tenantId, entityId, BusinessRuleTrigger.BEFORE_UPDATE, proposed, fieldBySlug);
+        Map<String, Object> resolvedApply = new LinkedHashMap<>();
+        for (EntityField f : fields) {
+            if (FieldStorage.isCoreDomain(f) || FieldTypes.isDocumentNumber(f) || FieldTypes.isOptimisticVersionField(f)) {
+                continue;
+            }
+            String slug = f.getSlug();
+            Object after = proposed.get(slug);
+            Object before = currentRuleSnapshot.get(slug);
+            if (!auditValueEquals(before, after)) {
+                resolvedApply.put(slug, after);
+            }
+        }
+        valuesToApply = resolvedApply;
 
         // Apply field updates (partial merge)
         for (var e : valuesToApply.entrySet()) {
@@ -973,7 +1039,8 @@ public class RecordsService {
                 createdByLabel,
                 updatedByLabel,
                 esId,
-                esDisplay
+                esDisplay,
+                null
         ), outValues);
     }
 
@@ -1103,8 +1170,20 @@ public class RecordsService {
         return "****" + last4;
     }
 
+    private List<EntityField> activeEntityFieldsOrdered(UUID entityId) {
+        List<EntityField> ordered = fieldRepository.findByEntityIdOrderBySortOrderAscNameAsc(entityId);
+        List<EntityField> out = new ArrayList<>();
+        for (EntityField f : ordered) {
+            if (EntityFieldStatuses.isActive(f)) {
+                out.add(f);
+            }
+        }
+        return out;
+    }
+
     private void recomputeSearchVector(UUID recordId, UUID entityId) {
-        List<EntityField> fields = fieldRepository.findByEntityId(entityId);
+        List<EntityField> fieldsForSearch = activeEntityFieldsOrdered(entityId);
+        List<EntityField> fieldsForDisplay = fieldRepository.findByEntityIdOrderBySortOrderAscNameAsc(entityId);
         List<EntityRecordValue> valueRows = valueRepository.findByRecordId(recordId);
         Map<UUID, EntityRecordValue> byFieldId = new HashMap<>();
         for (EntityRecordValue v : valueRows) {
@@ -1112,7 +1191,7 @@ public class RecordsService {
         }
         EntityRecord recordRow = recordRepository.findById(recordId).orElse(null);
         List<String> parts = new ArrayList<>();
-        for (EntityField f : fields) {
+        for (EntityField f : fieldsForSearch) {
             if (FieldStorage.isCoreDomain(f) || f.isPii() || !FieldSearchability.isSearchable(f)) {
                 continue;
             }
@@ -1143,7 +1222,7 @@ public class RecordsService {
             recordRepository.save(r);
             EntityDefinition entityDef = entityRepository.findById(entityId).orElse(null);
             if (entityDef != null) {
-                String title = resolveDisplayLabel(entityDef, fields, byFieldId, r.getTenantId(), recordId, false);
+                String title = resolveDisplayLabel(entityDef, fieldsForDisplay, byFieldId, r.getTenantId(), recordId, false);
                 globalSearchIndexService.upsertEntityRecord(
                         r.getTenantId(),
                         recordId,
@@ -1525,7 +1604,7 @@ public class RecordsService {
                 // If deserialize fails, return an empty but valid response.
                 return new RecordResponse(new com.erp.entitybuilder.web.v1.dto.RecordDtos.RecordDto(
                         null, null, null, null, null, null, null, null, Map.of(), List.of(), null, null, null, null,
-                        null, null
+                        null, null, null
                 ), Map.of());
             }
         }
@@ -1638,6 +1717,60 @@ public class RecordsService {
                 .map(EntityRecordValue::getValueNumber)
                 .filter(Objects::nonNull)
                 .orElse(BigDecimal.ZERO);
+    }
+
+    private Map<String, Object> buildCreateRuleValueSnapshot(
+            List<EntityField> fields,
+            Map<String, Object> values,
+            String businessDocumentNumber
+    ) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        for (EntityField f : fields) {
+            if (FieldStorage.isCoreDomain(f)) {
+                continue;
+            }
+            if (FieldTypes.isDocumentNumber(f)) {
+                Object v = values.get(f.getSlug());
+                if (v == null && businessDocumentNumber != null && !businessDocumentNumber.isBlank()) {
+                    v = businessDocumentNumber.trim();
+                }
+                m.put(f.getSlug(), v);
+                continue;
+            }
+            m.put(f.getSlug(), values.get(f.getSlug()));
+        }
+        return m;
+    }
+
+    private Map<String, Object> loadRuleEvaluationSnapshot(
+            UUID recordId,
+            EntityRecord record,
+            List<EntityField> fields,
+            UUID storageTenantId,
+            boolean piiReadPermission
+    ) {
+        List<EntityRecordValue> rows = valueRepository.findByRecordId(recordId);
+        Map<UUID, EntityRecordValue> byFieldId = new HashMap<>();
+        for (EntityRecordValue v : rows) {
+            byFieldId.put(v.getFieldId(), v);
+        }
+        Map<String, Object> m = new LinkedHashMap<>();
+        for (EntityField f : fields) {
+            if (FieldStorage.isCoreDomain(f)) {
+                continue;
+            }
+            if (FieldTypes.isDocumentNumber(f)) {
+                m.put(f.getSlug(), record.getBusinessDocumentNumber());
+                continue;
+            }
+            if (FieldTypes.isOptimisticVersionField(f)) {
+                m.put(f.getSlug(), readOptimisticVersion(valueRepository, recordId, f.getId()));
+                continue;
+            }
+            EntityRecordValue v = byFieldId.get(f.getId());
+            m.put(f.getSlug(), decodeValue(f, v, storageTenantId, recordId, piiReadPermission));
+        }
+        return m;
     }
 
     private void writeOptimisticVersionValue(UUID recordId, UUID fieldId, BigDecimal version) {

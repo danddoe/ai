@@ -1,5 +1,8 @@
 import { apiFetch } from './client';
 import type { LayoutV2 } from '../types/formLayout';
+import type { BusinessRuleDto } from '../utils/businessRuleUi';
+
+export type { BusinessRuleDto } from '../utils/businessRuleUi';
 
 export type DefinitionScope = 'STANDARD_OBJECT' | 'TENANT_OBJECT';
 
@@ -42,6 +45,55 @@ export function isDocumentNumberFieldType(fieldType: string | null | undefined):
   return (fieldType || '').trim().toLowerCase() === DOCUMENT_NUMBER_FIELD_TYPE;
 }
 
+/**
+ * Browser tracing for entity-status assignment API usage.
+ *
+ * Enable any one of:
+ * - URL: append {@code ?debugEntityStatus=1} (or {@code &debugEntityStatus=1}) and load/reload the app.
+ * - Console: {@code localStorage.setItem('erpDebugEntityStatus', '1'); location.reload()}
+ * - Session (same tab): {@code sessionStorage.setItem('erpDebugEntityStatus', '1'); location.reload()}
+ *
+ * Values {@code '1'} or {@code 'true'} (case-insensitive) count as on.
+ * Disable: remove the query param; {@code localStorage.removeItem('erpDebugEntityStatus')}; etc.
+ *
+ * Uses {@code console.log} so messages show under the default “All levels” Console filter (some setups hide “Info” only).
+ */
+export const DEBUG_ENTITY_STATUS_KEY = 'erpDebugEntityStatus';
+
+function readDebugEntityStatusFlag(getter: () => string | null): boolean {
+  const raw = getter()?.trim().toLowerCase();
+  return raw === '1' || raw === 'true';
+}
+
+export function isEntityStatusAssignmentDebugEnabled(): boolean {
+  try {
+    if (typeof window === 'undefined') return false;
+    const search = window.location?.search ?? '';
+    const q = new URLSearchParams(search);
+    if (readDebugEntityStatusFlag(() => q.get('debugEntityStatus'))) return true;
+    if (readDebugEntityStatusFlag(() => q.get(DEBUG_ENTITY_STATUS_KEY))) return true;
+    if (readDebugEntityStatusFlag(() => window.sessionStorage?.getItem(DEBUG_ENTITY_STATUS_KEY) ?? null)) {
+      return true;
+    }
+    if (readDebugEntityStatusFlag(() => window.localStorage?.getItem(DEBUG_ENTITY_STATUS_KEY) ?? null)) {
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+function debugEntityStatusRequest(kind: string, detail: Record<string, unknown>): void {
+  if (!isEntityStatusAssignmentDebugEnabled()) return;
+  console.log(`[${DEBUG_ENTITY_STATUS_KEY}] ${kind}`, detail);
+}
+
+/** Fields returned by the API may include {@code INACTIVE} archived definitions; record I/O and layouts use active fields only. */
+export function activeEntityFields(fields: EntityFieldDto[]): EntityFieldDto[] {
+  return fields.filter((f) => (f.status ?? 'ACTIVE').toUpperCase() === 'ACTIVE');
+}
+
 export type EntityFieldDto = {
   id: string;
   entityId: string;
@@ -59,6 +111,8 @@ export type EntityFieldDto = {
   labels?: Record<string, string> | null;
   formatString?: string | null;
   status: string;
+  /** When true, value contributes to the basic list &quot;Display&quot; column (ordered by sortOrder). */
+  includeInListSummaryDisplay?: boolean;
   createdAt: string;
   updatedAt: string;
   /**
@@ -509,6 +563,7 @@ export async function createField(
     required: boolean;
     pii: boolean;
     config?: Record<string, unknown> | null;
+    includeInListSummaryDisplay?: boolean;
   }
 ): Promise<EntityFieldDto> {
   const res = await apiFetch(`/v1/entities/${entityId}/fields`, {
@@ -536,6 +591,16 @@ export async function putFieldLabel(
   return (await res.json()) as EntityFieldDto;
 }
 
+/** {@code outcome} is {@code DELETED} (hard remove) or {@code DEACTIVATED} (field retained for historical data). */
+export async function deleteField(
+  entityId: string,
+  fieldId: string
+): Promise<{ outcome: 'DELETED' | 'DEACTIVATED' }> {
+  const res = await apiFetch(`/v1/entities/${entityId}/fields/${fieldId}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(await readApiError(res));
+  return (await res.json()) as { outcome: 'DELETED' | 'DEACTIVATED' };
+}
+
 export async function patchField(
   entityId: string,
   fieldId: string,
@@ -549,6 +614,7 @@ export async function patchField(
     labelOverride: string | null;
     formatString: string | null;
     config: Record<string, unknown> | null;
+    includeInListSummaryDisplay?: boolean;
   }>
 ): Promise<EntityFieldDto> {
   const res = await apiFetch(`/v1/entities/${entityId}/fields/${fieldId}`, {
@@ -657,7 +723,15 @@ export async function lookupRecords(
   if (params.assignedForEntityFieldId?.trim()) {
     q.set('assignedForEntityFieldId', params.assignedForEntityFieldId.trim());
   }
-  const res = await apiFetch(`/v1/tenants/${tenantId}/entities/${entityId}/records/lookup?${q.toString()}`);
+  const lookupPath = `/v1/tenants/${tenantId}/entities/${entityId}/records/lookup?${q.toString()}`;
+  if (params.assignedForEntityId?.trim() || params.assignedForEntityFieldId?.trim()) {
+    debugEntityStatusRequest('GET records/lookup (assignment scope via query params)', {
+      path: lookupPath,
+      assignedForEntityId: params.assignedForEntityId?.trim() || null,
+      assignedForEntityFieldId: params.assignedForEntityFieldId?.trim() || null,
+    });
+  }
+  const res = await apiFetch(lookupPath);
   if (!res.ok) throw new Error(await readApiError(res));
   return (await res.json()) as RecordLookupResponse;
 }
@@ -684,6 +758,8 @@ export type RecordDto = {
   updatedByLabel?: string | null;
   entityStatusId?: string | null;
   entityStatusDisplayLabel?: string | null;
+  /** Server-computed scalar-only list summary (two round-trips); references still resolved client-side when flagged. */
+  listSummaryDisplay?: string | null;
 };
 
 export type PageResponse<T> = {
@@ -734,9 +810,17 @@ export async function listRecords(
     q.set('assignedForEntityFieldId', params.assignedForEntityFieldId.trim());
   }
   const qs = q.toString();
-  const res = await apiFetch(
-    `/v1/tenants/${tenantId}/entities/${entityId}/records${qs ? `?${qs}` : ''}`
-  );
+  const listPath = `/v1/tenants/${tenantId}/entities/${entityId}/records${qs ? `?${qs}` : ''}`;
+  if (params?.assignedForEntityId?.trim() || params?.assignedForEntityFieldId?.trim()) {
+    debugEntityStatusRequest('GET records (assignment scope via query params)', {
+      path: listPath,
+      assignedForEntityId: params?.assignedForEntityId?.trim() || null,
+      assignedForEntityFieldId: params?.assignedForEntityFieldId?.trim() || null,
+      page: params?.page ?? null,
+      pageSize: params?.pageSize ?? null,
+    });
+  }
+  const res = await apiFetch(listPath);
   if (!res.ok) throw new Error(await readApiError(res));
   return (await res.json()) as PageResponse<RecordDto>;
 }
@@ -797,7 +881,9 @@ export async function getEntityStatusAssignmentsForField(
   entityId: string,
   fieldId: string
 ): Promise<EntityStatusAssignmentRowDto[]> {
-  const res = await apiFetch(`/v1/entities/${entityId}/fields/${fieldId}/entity-status-assignments`);
+  const path = `/v1/entities/${entityId}/fields/${fieldId}/entity-status-assignments`;
+  debugEntityStatusRequest('GET entity-status-assignments (field scope)', { path });
+  const res = await apiFetch(path);
   if (!res.ok) throw new Error(await readApiError(res));
   return (await res.json()) as EntityStatusAssignmentRowDto[];
 }
@@ -847,6 +933,44 @@ export async function getRecord(
   const res = await apiFetch(`/v1/tenants/${tenantId}/entities/${entityId}/records/${recordId}`);
   if (!res.ok) throw new Error(await readApiError(res));
   return (await res.json()) as RecordDto;
+}
+
+/** Outgoing link from a record ({@code from}) to {@code toRecordId} via schema relationship slug. */
+export type RecordLinkWriteDto = {
+  relationshipSlug: string;
+  toRecordId: string;
+};
+
+export async function listRecordLinks(tenantId: string, recordId: string): Promise<RecordLinkDto[]> {
+  const res = await apiFetch(`/v1/tenants/${tenantId}/records/${recordId}/links`);
+  if (!res.ok) throw new Error(await readApiError(res));
+  return (await res.json()) as RecordLinkDto[];
+}
+
+export async function addRecordLink(
+  tenantId: string,
+  recordId: string,
+  body: RecordLinkWriteDto
+): Promise<void> {
+  const res = await apiFetch(`/v1/tenants/${tenantId}/records/${recordId}/links`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await readApiError(res));
+}
+
+export async function deleteRecordLink(
+  tenantId: string,
+  recordId: string,
+  body: RecordLinkWriteDto
+): Promise<void> {
+  const res = await apiFetch(`/v1/tenants/${tenantId}/records/${recordId}/links`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await readApiError(res));
 }
 
 export async function getRecordByBusinessDocumentNumber(
@@ -994,6 +1118,20 @@ export async function listFormLayouts(entityId: string): Promise<FormLayoutDto[]
   const res = await apiFetch(`/v1/entities/${entityId}/form-layouts`);
   if (!res.ok) throw new Error(await readApiError(res));
   return (await res.json()) as FormLayoutDto[];
+}
+
+export async function listBusinessRules(
+  entityId: string,
+  params?: { surface?: 'ALL' | 'UI' | 'SERVER'; formLayoutId?: string; activeOnly?: boolean }
+): Promise<BusinessRuleDto[]> {
+  const q = new URLSearchParams();
+  if (params?.surface) q.set('surface', params.surface);
+  if (params?.formLayoutId) q.set('formLayoutId', params.formLayoutId);
+  if (params?.activeOnly !== undefined) q.set('activeOnly', String(params.activeOnly));
+  const qs = q.toString();
+  const res = await apiFetch(`/v1/entities/${entityId}/business-rules${qs ? `?${qs}` : ''}`);
+  if (!res.ok) throw new Error(await readApiError(res));
+  return (await res.json()) as BusinessRuleDto[];
 }
 
 export async function getFormLayout(entityId: string, layoutId: string): Promise<FormLayoutDto> {

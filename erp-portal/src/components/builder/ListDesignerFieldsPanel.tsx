@@ -95,25 +95,30 @@ export function ListDesignerFieldsPanel({
         {filtered.map((f) => {
           const on = fieldOnList(columns, f.slug);
           const isRowIdSlug = f.slug.trim().toLowerCase() === RECORD_LIST_ROW_ID_SLUG;
+          const isInactive = (f.status ?? 'ACTIVE').toUpperCase() === 'INACTIVE';
+          const cantAdd = !schemaWritable || isRowIdSlug || isInactive;
           return (
             <li key={f.id}>
               <div className="builder-field-row">
                 <button
                   type="button"
-                  className={`builder-field-btn${schemaWritable && !isRowIdSlug ? ' focusable' : ''}`}
-                  disabled={!schemaWritable || isRowIdSlug}
-                  onClick={() => schemaWritable && !isRowIdSlug && onAddColumn(f.slug)}
+                  className={`builder-field-btn${schemaWritable && !isRowIdSlug && !isInactive ? ' focusable' : ''}`}
+                  disabled={cantAdd}
+                  onClick={() => schemaWritable && !isRowIdSlug && !isInactive && onAddColumn(f.slug)}
                   title={
-                    isRowIdSlug
-                      ? 'Use “Show record ID column” above to show or hide the UUID on Records; it is not a list column.'
-                      : schemaWritable
-                        ? `Add ${f.name} as column`
-                        : 'Schema write required'
+                    isInactive
+                      ? 'Inactive fields cannot be added as columns'
+                      : isRowIdSlug
+                        ? 'Use “Show record ID column” above to show or hide the UUID on Records; it is not a list column.'
+                        : schemaWritable
+                          ? `Add ${f.name} as column`
+                          : 'Schema write required'
                   }
                 >
                   <span className="builder-field-name">{f.name}</span>
                   <span className="builder-field-meta">
                     <code>{f.slug}</code>
+                    {isInactive ? <span className="pill pill-off">inactive</span> : null}
                     <span className={`pill ${on ? 'pill-on' : 'pill-off'}`}>{on ? 'on list' : 'off'}</span>
                   </span>
                 </button>
@@ -123,9 +128,9 @@ export function ListDesignerFieldsPanel({
                     variant="default"
                     size="xs"
                     onClick={() => onOpenEditField(f)}
-                    aria-label={`Edit field ${f.name}`}
+                    aria-label={`${isInactive ? 'View' : 'Edit'} field ${f.name}`}
                   >
-                    Edit
+                    {isInactive ? 'View' : 'Edit'}
                   </Button>
                 )}
               </div>

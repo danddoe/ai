@@ -4,10 +4,13 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   getEntity,
   getFormLayout,
+  listEntities,
+  listEntityRelationships,
   listFields,
   patchFormLayout,
   type EntityDto,
   type EntityFieldDto,
+  type EntityRelationshipDto,
   type FormLayoutDto,
 } from '../api/schemas';
 import { useAuth } from '../auth/AuthProvider';
@@ -55,6 +58,8 @@ export function FormBuilderPage() {
   } | null>(null);
   const [editField, setEditField] = useState<EntityFieldDto | null>(null);
   const [tplOpen, setTplOpen] = useState(false);
+  const [relationships, setRelationships] = useState<EntityRelationshipDto[]>([]);
+  const [allEntities, setAllEntities] = useState<EntityDto[]>([]);
 
   const canMutateFieldDefs = useMemo(
     () => (entity ? canMutateEntityDefinition(permissions, entity) : false),
@@ -75,14 +80,18 @@ export function FormBuilderPage() {
     setError(null);
     setLegacy(false);
     try {
-      const [e, f, l] = await Promise.all([
+      const [e, f, l, rels, ents] = await Promise.all([
         getEntity(entityId),
         listFields(entityId),
         getFormLayout(entityId, layoutId),
+        listEntityRelationships(),
+        listEntities(),
       ]);
       setEntity(e);
       setFields(f);
       setLayoutDto(l);
+      setRelationships(rels);
+      setAllEntities(ents);
       setLayoutName(l.name);
       setLayoutIsDefault(l.isDefault);
       const parsed = parseLayoutV2(l.layout);
@@ -331,8 +340,11 @@ export function FormBuilderPage() {
         />
         <PropertiesPanel
           layout={draft}
+          layoutEntityId={entity.id}
           selection={selection}
           fields={fields}
+          relationships={relationships}
+          allEntities={allEntities}
           schemaWritable={canSchemaWrite}
           onChange={canSchemaWrite ? (next) => setDraft(next) : () => {}}
           onClearSelection={() => setSelection(null)}
@@ -384,6 +396,10 @@ export function FormBuilderPage() {
           onUpdated={(f) =>
             setFields((prev) => prev.map((x) => (x.id === f.id ? f : x)))
           }
+          onDeleted={() => {
+            setEditField(null);
+            void load();
+          }}
         />
       )}
       {tplOpen && (

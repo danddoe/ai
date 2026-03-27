@@ -1,6 +1,6 @@
 import { Button, Checkbox, Select, Stack, Text, Textarea, TextInput } from '@mantine/core';
-import type { EntityFieldDto } from '../../api/schemas';
-import type { LayoutActionType, LayoutItemAction, LayoutV2, StructureSelection } from '../../types/formLayout';
+import type { EntityDto, EntityFieldDto, EntityRelationshipDto } from '../../api/schemas';
+import type { LayoutActionType, LayoutItemAction, LayoutRegion, LayoutV2, StructureSelection } from '../../types/formLayout';
 import * as M from '../../utils/layoutMutations';
 import { isActionItem, isSafeActionHref, resolveLayoutItemField } from '../../utils/layoutV2';
 
@@ -14,10 +14,19 @@ function titleCaseFromSlug(slug: string): string {
     .join(' ');
 }
 
+function isValidEntityRelationshipBinding(
+  b: LayoutRegion['binding'] | undefined
+): b is { kind: 'entity_relationship'; relationshipId: string } {
+  return b?.kind === 'entity_relationship' && typeof b.relationshipId === 'string' && b.relationshipId.length > 0;
+}
+
 type Props = {
   layout: LayoutV2;
+  layoutEntityId: string;
   selection: StructureSelection | null;
   fields: EntityFieldDto[];
+  relationships: EntityRelationshipDto[];
+  allEntities: EntityDto[];
   schemaWritable: boolean;
   onChange: (next: LayoutV2) => void;
   onClearSelection: () => void;
@@ -31,21 +40,78 @@ type Props = {
 
 export function PropertiesPanel({
   layout,
+  layoutEntityId,
   selection,
   fields,
+  relationships,
+  allEntities,
   schemaWritable,
   onChange,
   onClearSelection,
   onOpenCreateField,
   onOpenEditField,
 }: Props) {
+  if (selection?.kind === 'region') {
+    const { regionIndex } = selection;
+    const region = layout.regions[regionIndex];
+    if (!region) {
+      return (
+        <aside className="builder-panel">
+          <p className="builder-muted">Selection no longer valid.</p>
+          <Button variant="default" size="xs" onClick={onClearSelection}>
+            Clear
+          </Button>
+        </aside>
+      );
+    }
+    const outgoing = relationships.filter((r) => r.fromEntityId === layoutEntityId);
+    const entityName = (id: string) => allEntities.find((e) => e.id === id)?.name ?? id;
+    const relBinding = isValidEntityRelationshipBinding(region.binding) ? region.binding : null;
+    const selectData = outgoing.map((r) => ({
+      value: r.id,
+      label: `${r.name} (${r.slug}) → ${entityName(r.toEntityId)}`,
+    }));
+
+    return (
+      <aside className="builder-panel">
+        <div className="builder-panel-header">
+          <h2>Region</h2>
+        </div>
+        <Stack gap="md">
+          <Select
+            label="Related records"
+            description={
+              relBinding
+                ? 'Rows are loaded from record links on the parent for this relationship. You can leave field rows empty or add a title only.'
+                : 'Optional: show a grid of linked child records for a relationship whose parent is this entity (from side).'
+            }
+            placeholder={outgoing.length ? 'None — use field rows only' : 'No outgoing relationships defined'}
+            data={selectData}
+            value={relBinding?.relationshipId ?? null}
+            onChange={(id) => {
+              if (!id) {
+                onChange(M.setRegionBinding(layout, regionIndex, null));
+                return;
+              }
+              onChange(
+                M.setRegionBinding(layout, regionIndex, { kind: 'entity_relationship', relationshipId: id })
+              );
+            }}
+            clearable
+            disabled={!schemaWritable || outgoing.length === 0}
+          />
+        </Stack>
+      </aside>
+    );
+  }
+
   if (!selection || selection.kind !== 'item') {
     return (
       <aside className="builder-panel">
         <div className="builder-panel-header">
           <h2>Properties</h2>
         </div>
-        <p className="builder-muted">Select a field or button on the form to edit properties.</p>
+        <p className="builder-muted">Select a region, field, or button on the form to edit properties.</p>
       </aside>
     );
   }

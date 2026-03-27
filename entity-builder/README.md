@@ -124,5 +124,11 @@ End-to-end system tests in `src/test/java/com/erp/entitybuilder/e2e/` exercise e
 ```
 
 If CockroachDB is not reachable, E2E tests are skipped.
-
+```bash
 ./gradlew :entity-builder:bootRun --args="--spring.profiles.active=default-bootstrap"    
+# Agent only
+.\gradlew :entity-builder:bootRun --args="--spring.profiles.active=default-bootstrap" -PbootHotswap
+# Agent + remote debug on 5005 (IDE attach)
+.\gradlew :entity-builder:bootRun --args="--spring.profiles.active=default-bootstrap"   -PbootHotswap -PbootDebug
+
+```

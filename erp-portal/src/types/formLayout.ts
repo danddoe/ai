@@ -56,13 +56,19 @@ export interface LayoutRow {
   columns: LayoutColumn[];
 }
 
+/**
+ * When set, the region shows related records for `relationshipId` (schema relationship whose
+ * `fromEntityId` must match the layout entity). Child rows are resolved via record links from the parent record.
+ */
+export type LayoutRegionBinding = { kind: 'entity_relationship'; relationshipId: string };
+
 export interface LayoutRegion {
   id: string;
   role: RegionRole;
   title: string;
   tabGroupId: string | null;
   rows: LayoutRow[];
-  binding?: { kind: string; relationshipId?: string };
+  binding?: LayoutRegionBinding;
 }
 
 /** Optional portal/runtime behavior for record entry (validated on layout save in entity-builder). */

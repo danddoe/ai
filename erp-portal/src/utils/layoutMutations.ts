@@ -1,4 +1,11 @@
-import type { LayoutItem, LayoutItemAction, LayoutV2, Presentation, RegionRole } from '../types/formLayout';
+import type {
+  LayoutItem,
+  LayoutItemAction,
+  LayoutRegionBinding,
+  LayoutV2,
+  Presentation,
+  RegionRole,
+} from '../types/formLayout';
 import { isActionItem, newColumn, newRegion, newRow } from './layoutV2';
 import { newId as nid } from './newId';
 
@@ -188,6 +195,21 @@ export function bindItemToField(
 export function setRegionTitle(layout: LayoutV2, regionIndex: number, title: string): LayoutV2 {
   const next = cloneLayout(layout);
   next.regions[regionIndex].title = title;
+  return next;
+}
+
+export function setRegionBinding(
+  layout: LayoutV2,
+  regionIndex: number,
+  binding: LayoutRegionBinding | null
+): LayoutV2 {
+  const next = cloneLayout(layout);
+  const r = next.regions[regionIndex];
+  if (binding == null) {
+    delete r.binding;
+  } else {
+    r.binding = binding;
+  }
   return next;
 }
 

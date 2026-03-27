@@ -6,6 +6,7 @@ import com.erp.entitybuilder.domain.DefinitionScope;
 import com.erp.entitybuilder.domain.EntityCategoryKeys;
 import com.erp.entitybuilder.domain.EntityDefinition;
 import com.erp.entitybuilder.domain.EntityField;
+import com.erp.entitybuilder.domain.EntityFieldStatuses;
 import com.erp.entitybuilder.domain.TenantEntityExtension;
 import com.erp.entitybuilder.domain.TenantEntityExtensionField;
 import com.erp.entitybuilder.repository.EntityDefinitionRepository;
@@ -42,6 +43,7 @@ public class EntitySchemaService {
     private final EntityBuilderSecurity entityBuilderSecurity;
     private final PlatformTenantProperties platformTenantProperties;
     private final EntityFieldLabelService entityFieldLabelService;
+    private final EntityFieldLifecycleService entityFieldLifecycleService;
 
     public EntitySchemaService(
             EntityDefinitionRepository entityRepository,
@@ -50,7 +52,8 @@ public class EntitySchemaService {
             TenantEntityExtensionFieldRepository tenantEntityExtensionFieldRepository,
             EntityBuilderSecurity entityBuilderSecurity,
             PlatformTenantProperties platformTenantProperties,
-            @Lazy EntityFieldLabelService entityFieldLabelService
+            @Lazy EntityFieldLabelService entityFieldLabelService,
+            EntityFieldLifecycleService entityFieldLifecycleService
     ) {
         this.entityRepository = entityRepository;
         this.fieldRepository = fieldRepository;
@@ -59,6 +62,7 @@ public class EntitySchemaService {
         this.entityBuilderSecurity = entityBuilderSecurity;
         this.platformTenantProperties = platformTenantProperties;
         this.entityFieldLabelService = entityFieldLabelService;
+        this.entityFieldLifecycleService = entityFieldLifecycleService;
     }
 
     private void assertCanMutateEntitySchema(EntityDefinition entity) {
@@ -115,7 +119,7 @@ public class EntitySchemaService {
         e.setDefinitionScope(definitionScope);
         e = entityRepository.save(e);
         if (bootstrapDefaultFields) {
-            createField(tenantId, e.getId(), "Name", "name", "string", true, false, null, 0, null, null);
+            createField(tenantId, e.getId(), "Name", "name", "string", true, false, null, 0, null, null, false);
             e.setDefaultDisplayFieldSlug("name");
             e = entityRepository.save(e);
         }
@@ -351,8 +355,12 @@ public class EntitySchemaService {
                 e.setDefaultDisplayFieldSlug(null);
             } else {
                 String trimmed = s.trim();
-                if (!fieldRepository.existsByEntityIdAndSlug(entityId, trimmed)) {
-                    throw new ApiException(HttpStatus.BAD_REQUEST, "bad_request", "defaultDisplayFieldSlug must match an existing field slug", Map.of("slug", trimmed));
+                EntityField df = fieldRepository.findByEntityIdAndSlug(entityId, trimmed)
+                        .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "bad_request",
+                                "defaultDisplayFieldSlug must match an existing active field slug", Map.of("slug", trimmed)));
+                if (!EntityFieldStatuses.isActive(df)) {
+                    throw new ApiException(HttpStatus.BAD_REQUEST, "bad_request",
+                            "defaultDisplayFieldSlug must be an active field", Map.of("slug", trimmed));
                 }
                 e.setDefaultDisplayFieldSlug(trimmed);
             }
@@ -490,6 +498,11 @@ public class EntitySchemaService {
 
     @Transactional
     public EntityField createField(UUID tenantId, UUID entityId, String name, String slug, String fieldType, boolean required, boolean pii, String configJson, Integer sortOrder, String labelOverride, String formatString) {
+        return createField(tenantId, entityId, name, slug, fieldType, required, pii, configJson, sortOrder, labelOverride, formatString, false);
+    }
+
+    @Transactional
+    public EntityField createField(UUID tenantId, UUID entityId, String name, String slug, String fieldType, boolean required, boolean pii, String configJson, Integer sortOrder, String labelOverride, String formatString, boolean includeInListSummaryDisplay) {
         EntityDefinition entity = getEntity(tenantId, entityId);
         assertCanMutateEntitySchema(entity);
 
@@ -508,6 +521,7 @@ public class EntitySchemaService {
         f.setSortOrder(sortOrder != null ? sortOrder : 0);
         f.setLabelOverride(nullIfBlank(labelOverride));
         f.setFormatString(nullIfBlank(formatString));
+        f.setIncludeInListSummaryDisplay(includeInListSummaryDisplay);
         fieldRepository.save(f);
 
         if (entity.getTenantEntityExtensionId() != null) {
@@ -541,10 +555,13 @@ public class EntitySchemaService {
     }
 
     @Transactional
-    public EntityField updateField(UUID tenantId, UUID entityId, UUID fieldId, Optional<String> name, Optional<String> slug, Optional<String> fieldType, Optional<Boolean> required, Optional<Boolean> pii, Optional<String> configJson, Optional<Integer> sortOrder, Optional<String> labelOverride, Optional<String> formatString) {
+    public EntityField updateField(UUID tenantId, UUID entityId, UUID fieldId, Optional<String> name, Optional<String> slug, Optional<String> fieldType, Optional<Boolean> required, Optional<Boolean> pii, Optional<String> configJson, Optional<Integer> sortOrder, Optional<String> labelOverride, Optional<String> formatString, Optional<Boolean> includeInListSummaryDisplay) {
         EntityDefinition entity = getEntity(tenantId, entityId);
         assertCanMutateEntitySchema(entity);
         EntityField f = getField(tenantId, entityId, fieldId);
+        if (!EntityFieldStatuses.isActive(f)) {
+            throw new ApiException(HttpStatus.CONFLICT, "conflict", "Inactive fields cannot be updated", Map.of("fieldId", fieldId));
+        }
         String oldSlug = f.getSlug();
         UUID extId = entity.getTenantEntityExtensionId();
 
@@ -562,6 +579,7 @@ public class EntitySchemaService {
         sortOrder.ifPresent(f::setSortOrder);
         labelOverride.ifPresent(lo -> f.setLabelOverride(nullIfBlank(lo)));
         formatString.ifPresent(s -> f.setFormatString(nullIfBlank(s)));
+        includeInListSummaryDisplay.ifPresent(f::setIncludeInListSummaryDisplay);
 
         fieldRepository.save(f);
 
@@ -579,15 +597,11 @@ public class EntitySchemaService {
     }
 
     @Transactional
-    public void deleteField(UUID tenantId, UUID entityId, UUID fieldId) {
+    public EntityFieldLifecycleService.DeleteOutcome deleteField(UUID tenantId, UUID entityId, UUID fieldId) {
         EntityDefinition entity = getEntity(tenantId, entityId);
         assertCanMutateEntitySchema(entity);
         EntityField f = getField(tenantId, entityId, fieldId);
-        if (entity.getTenantEntityExtensionId() != null) {
-            tenantEntityExtensionFieldRepository.deleteByTenantEntityExtensionIdAndSlug(
-                    entity.getTenantEntityExtensionId(), f.getSlug());
-        }
-        fieldRepository.delete(f);
+        return entityFieldLifecycleService.deleteOrDeactivateField(entity, f);
     }
 
     private void mirrorExtensionFieldCreate(UUID tenantEntityExtensionId, EntityField f) {

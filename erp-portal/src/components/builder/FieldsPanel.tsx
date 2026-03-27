@@ -156,19 +156,27 @@ export function FieldsPanel({
       <ul className="builder-field-list">
         {filtered.map((f) => {
           const on = fieldOnForm(layout, f.id, f.slug);
+          const isInactive = (f.status ?? 'ACTIVE').toUpperCase() === 'INACTIVE';
           return (
             <li key={f.id}>
               <div className="builder-field-row">
                 <button
                   type="button"
-                  className={`builder-field-btn${addTarget ? ' focusable' : ''}`}
-                  disabled={!addTarget}
-                  onClick={() => addTarget && onPickField(f)}
-                  title={addTarget ? `Add ${f.name} to column` : 'Select a column (Add field) first'}
+                  className={`builder-field-btn${addTarget && !isInactive ? ' focusable' : ''}`}
+                  disabled={!addTarget || isInactive}
+                  onClick={() => addTarget && !isInactive && onPickField(f)}
+                  title={
+                    isInactive
+                      ? 'Inactive fields cannot be placed on forms'
+                      : addTarget
+                        ? `Add ${f.name} to column`
+                        : 'Select a column (Add field) first'
+                  }
                 >
                   <span className="builder-field-name">{f.name}</span>
                   <span className="builder-field-meta">
                     <code>{f.slug}</code>
+                    {isInactive ? <span className="pill pill-off">inactive</span> : null}
                     <span className={`pill ${on ? 'pill-on' : 'pill-off'}`}>{on ? 'on form' : 'off'}</span>
                   </span>
                 </button>
@@ -178,9 +186,9 @@ export function FieldsPanel({
                     variant="default"
                     size="xs"
                     onClick={() => onOpenEditField(f)}
-                    aria-label={`Edit field ${f.name}`}
+                    aria-label={`${isInactive ? 'View' : 'Edit'} field ${f.name}`}
                   >
-                    Edit
+                    {isInactive ? 'View' : 'Edit'}
                   </Button>
                 )}
               </div>

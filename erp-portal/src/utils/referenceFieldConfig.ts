@@ -1,4 +1,4 @@
-import type { EntityDto, EntityFieldDto } from '../api/schemas';
+import type { EntityDto, EntityFieldDto, EntityRelationshipDto } from '../api/schemas';
 import { ENTITY_STATUS_ENTITY_SLUG } from './entityStatusCatalog';
 
 export const MAX_REFERENCE_LOOKUP_COLUMNS = 12;
@@ -38,6 +38,51 @@ export function looksLikeRecordUuid(s: string): boolean {
 }
 
 /** Build a slug → entity map for reference fields on the current form. */
+/** Optional `field.config.relationshipId` (UUID string) when the reference participates in record links. */
+export function readReferenceRelationshipId(cfg: EntityFieldDto['config']): string | undefined {
+  const raw = cfg && typeof cfg === 'object' ? (cfg as Record<string, unknown>) : {};
+  const id = raw.relationshipId;
+  if (typeof id === 'string' && id.trim().length > 0) return id.trim();
+  return undefined;
+}
+
+/**
+ * When non-null, the record form should render linked child rows ({@code RelatedRecordsRegion}) instead of a single-record lookup.
+ * Requires {@code rel.fromEntityId} = host entity (parent / link “from” side), {@code rel.toEntityId} = referenced entity,
+ * and cardinality {@code one-to-many} or {@code many-to-many}.
+ */
+export function resolveReferenceFieldCollectionRelationship(
+  field: EntityFieldDto,
+  hostEntityId: string,
+  relationships: EntityRelationshipDto[],
+  allEntities: EntityDto[]
+): EntityRelationshipDto | null {
+  if ((field.fieldType || '').toLowerCase() !== 'reference') return null;
+  const { targetEntitySlug } = readReferenceFieldConfig(field.config);
+  if (!targetEntitySlug) return null;
+  const targetEntity = allEntities.find((e) => (e.slug || '').trim().toLowerCase() === targetEntitySlug);
+  if (!targetEntity) return null;
+
+  const rid = readReferenceRelationshipId(field.config);
+  const byId = rid ? relationships.find((r) => r.id === rid) : undefined;
+  const byShape =
+    byId ??
+    relationships.find(
+      (r) =>
+        r.fromEntityId === hostEntityId &&
+        r.toEntityId === targetEntity.id &&
+        (!r.toFieldSlug?.trim() || r.toFieldSlug === field.slug)
+    );
+
+  if (!byShape) return null;
+  if (byShape.fromEntityId !== hostEntityId || byShape.toEntityId !== targetEntity.id) return null;
+
+  const card = (byShape.cardinality || '').toLowerCase();
+  if (card !== 'one-to-many' && card !== 'many-to-many') return null;
+
+  return byShape;
+}
+
 export function buildEntityBySlugForReferenceFields(
   fields: EntityFieldDto[],
   allEntities: EntityDto[]

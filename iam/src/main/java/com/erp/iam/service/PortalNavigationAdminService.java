@@ -61,7 +61,7 @@ public class PortalNavigationAdminService {
         if (canWriteGlobalNav(auths)) {
             rows = new ArrayList<>(repository.findAll());
         } else if (canWriteTenantNav(auths) && principal.getTenantId() != null) {
-            rows = new ArrayList<>(repository.findAllByTenantId(principal.getTenantId()));
+            rows = new ArrayList<>(repository.findAllGlobalAndByTenantId(principal.getTenantId()));
         } else {
             throw new ApiException(HttpStatus.FORBIDDEN, "forbidden", "Requires portal navigation write access");
         }
@@ -292,7 +292,8 @@ public class PortalNavigationAdminService {
             }
         } else {
             if (!canWriteTenantNav(auths)) {
-                throw new ApiException(HttpStatus.FORBIDDEN, "forbidden", "Requires portal:navigation:write or entity_builder:schema:write");
+                throw new ApiException(HttpStatus.FORBIDDEN, "forbidden",
+                        "Requires portal:navigation:write or entity_builder:schema:write or entity_builder:schema:tenant_write");
             }
         }
         UUID tenantId = global ? null : principal.getTenantId();
@@ -515,7 +516,8 @@ public class PortalNavigationAdminService {
             throw new ApiException(HttpStatus.FORBIDDEN, "forbidden", "Wrong tenant");
         }
         if (!canWriteTenantNav(auths)) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "forbidden", "Requires portal:navigation:write or entity_builder:schema:write");
+            throw new ApiException(HttpStatus.FORBIDDEN, "forbidden",
+                    "Requires portal:navigation:write or entity_builder:schema:write or entity_builder:schema:tenant_write");
         }
     }
 
@@ -560,7 +562,9 @@ public class PortalNavigationAdminService {
     }
 
     private static boolean canWriteTenantNav(Set<String> auths) {
-        return auths.contains("portal:navigation:write") || auths.contains("entity_builder:schema:write");
+        return auths.contains("portal:navigation:write")
+                || auths.contains("entity_builder:schema:write")
+                || auths.contains("entity_builder:schema:tenant_write");
     }
 
     private static boolean canWriteGlobalNav(Set<String> auths) {

@@ -570,8 +570,8 @@ export function CreateUiWizardPage() {
     return (
       <div className="page-shell">
         <p role="alert" className="text-error">
-          You need <code>portal:navigation:write</code> or <code>entity_builder:schema:write</code> to create portal
-          navigation.
+          You need <code>portal:navigation:write</code>, <code>entity_builder:schema:write</code>, or{' '}
+          <code>entity_builder:schema:tenant_write</code> to create portal navigation.
         </p>
         <Link to="/home">← Home</Link>
       </div>

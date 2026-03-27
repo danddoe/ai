@@ -30,9 +30,12 @@ import {
   type SortingState,
 } from '@tanstack/react-table';
 import {
+  activeEntityFields,
   getEntity,
   getEntityStatusAssignments,
+  getRecord,
   getRecordListView,
+  listEntities,
   listFields,
   listRecordListViews,
   listRecords,
@@ -53,7 +56,13 @@ import {
 import { useAuth } from '../auth/AuthProvider';
 import { buildRecordSearchFilter } from '../utils/recordListSearch';
 import { ENTITY_STATUS_ENTITY_SLUG } from '../utils/entityStatusCatalog';
-import { readReferenceFieldConfig } from '../utils/referenceFieldConfig';
+import {
+  buildRecordListSummaryDisplay,
+  buildReferenceRecordLabel,
+  collectReferenceResolutionTasks,
+  entitiesBySlugLower,
+} from '../utils/referenceRecordDisplayLabel';
+import { looksLikeRecordUuid, readReferenceFieldConfig } from '../utils/referenceFieldConfig';
 
 function shortId(id: string): string {
   return id.length > 10 ? `${id.slice(0, 8)}…` : id;
@@ -74,6 +83,30 @@ function displayForRecord(entity: EntityDto, row: RecordDto): string {
   return '—';
 }
 
+/** Basic list &quot;Display&quot; column: server scalar summary, else flagged fields (+ ref labels), else entity default display. */
+function basicListDisplayText(
+  entity: EntityDto | null,
+  row: RecordDto,
+  listSummaryFieldsOrdered: EntityFieldDto[],
+  refLabels: Record<string, string>
+): string {
+  if (!entity) return '';
+  const server = row.listSummaryDisplay?.trim();
+  if (server) return server;
+  if (listSummaryFieldsOrdered.length > 0) {
+    return buildRecordListSummaryDisplay(row, listSummaryFieldsOrdered, refLabels);
+  }
+  return displayForRecord(entity, row);
+}
+
+const REF_LABEL_FETCH_CONCURRENCY = 8;
+
+function chunkArray<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
 function parseCommaSlugs(raw: string | null): string[] {
   if (!raw || !raw.trim()) return [];
   return raw
@@ -82,16 +115,32 @@ function parseCommaSlugs(raw: string | null): string[] {
     .filter((s) => s.length > 0);
 }
 
-function formatCellValue(row: RecordDto, slug: string, field?: EntityFieldDto): string {
+function formatCellValue(
+  row: RecordDto,
+  slug: string,
+  field?: EntityFieldDto,
+  refLabels?: Record<string, string>
+): string {
   const v = row.values[slug];
   if (v === undefined || v === null) return '—';
   const ft = field?.fieldType?.toLowerCase() ?? '';
+  if (ft === 'reference') {
+    const uuid = String(v).trim();
+    const key = `${slug}::${uuid}`;
+    const lbl = refLabels?.[key]?.trim();
+    if (lbl) return lbl;
+    if (looksLikeRecordUuid(uuid)) return shortId(uuid);
+    return String(v);
+  }
   if (ft === 'boolean') return v === true || v === 'true' ? 'Yes' : v === false || v === 'false' ? 'No' : String(v);
   if (typeof v === 'object') return JSON.stringify(v);
   return String(v);
 }
 
-/** Value used for client-side sort on the current page (TanStack). */
+/**
+ * Value used for client-side sort on the current page (TanStack).
+ * Reference columns still sort by stored UUID (raw value), while {@link formatCellValue} may show a resolved label.
+ */
 function sortValueForField(row: RecordDto, slug: string, field?: EntityFieldDto): string | number | null {
   const v = row.values[slug];
   if (v === undefined || v === null) return null;
@@ -176,6 +225,9 @@ function buildEntityRecordColumns(p: {
   canRecordsWrite: boolean;
   entity: EntityDto | null;
   entityId: string;
+  /** Basic layout Display column: ordered fields with {@code includeInListSummaryDisplay}. */
+  listSummaryFieldsOrdered: EntityFieldDto[];
+  referenceLabelMap: Record<string, string>;
   saveInline: (row: RecordDto, slug: string, raw: unknown) => Promise<void>;
   onDelete: (row: RecordDto) => void | Promise<void>;
 }): ColumnDef<RecordDto, unknown>[] {
@@ -225,6 +277,9 @@ function buildEntityRecordColumns(p: {
             const ft = field.fieldType.toLowerCase();
             const v = r.values[slugInner];
             const inputKey = `${r.id}-${slugInner}-${r.updatedAt ?? ''}`;
+            if (ft === 'reference') {
+              return <Text size="xs">{formatCellValue(r, slugInner, field, p.referenceLabelMap)}</Text>;
+            }
             if (ft === 'boolean') {
               return (
                 <Checkbox
@@ -256,7 +311,7 @@ function buildEntityRecordColumns(p: {
               />
             );
           }
-          const text = formatCellValue(r, slugInner, field);
+          const text = formatCellValue(r, slugInner, field, p.referenceLabelMap);
           const linkRec = colDefMeta?.linkToRecord;
           if (linkRec) {
             return (
@@ -273,9 +328,13 @@ function buildEntityRecordColumns(p: {
     cols.push(
       {
         id: 'display',
-        accessorFn: (row) => (p.entity ? displayForRecord(p.entity, row) : ''),
+        accessorFn: (row) =>
+          basicListDisplayText(p.entity, row, p.listSummaryFieldsOrdered, p.referenceLabelMap),
         header: ({ column }) => <RecordsListColumnHeader column={column} label="Display" />,
-        cell: ({ row }) => (p.entity ? displayForRecord(p.entity, row.original) : '—'),
+        cell: ({ row }) =>
+          p.entity
+            ? basicListDisplayText(p.entity, row.original, p.listSummaryFieldsOrdered, p.referenceLabelMap)
+            : '—',
         sortingFn: 'alphanumeric',
       },
       {
@@ -479,6 +538,8 @@ export function EntityRecordsListPage() {
   const [busy, setBusy] = useState(false);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [expanded, setExpanded] = useState<ExpandedState>({});
+  const [tenantEntities, setTenantEntities] = useState<EntityDto[] | null>(null);
+  const [referenceLabelMap, setReferenceLabelMap] = useState<Record<string, string>>({});
 
   const statusFilterUuid = useMemo(() => (searchParams.get('ebStatus') ?? '').trim(), [searchParams]);
   const statusFilterFieldSlug = useMemo(() => (searchParams.get('ebStatusField') ?? '').trim(), [searchParams]);
@@ -549,10 +610,33 @@ export function EntityRecordsListPage() {
     };
   }, [searchDraft, qParam, setSearchParams]);
 
+  useEffect(() => {
+    let cancelled = false;
+    void listEntities()
+      .then((rows) => {
+        if (!cancelled) setTenantEntities(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setTenantEntities([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const fieldBySlug = useMemo(() => {
     const m = new Map<string, EntityFieldDto>();
     for (const f of fields ?? []) m.set(f.slug, f);
     return m;
+  }, [fields]);
+
+  const listSummaryFieldsOrdered = useMemo(() => {
+    if (!fields) return [];
+    const active = activeEntityFields(fields).filter((f) => f.includeInListSummaryDisplay);
+    return [...active].sort((a, b) => {
+      if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
+      return a.name.localeCompare(b.name);
+    });
   }, [fields]);
 
   const entityStatusRefFields = useMemo(() => {
@@ -591,6 +675,20 @@ export function EntityRecordsListPage() {
     return colsSlugs.filter((s) => fieldBySlug.has(s) && skipPk(s));
   }, [savedListView, legacyCustomColumns, colsSlugs, fieldBySlug]);
 
+  const entitiesBySlug = useMemo(() => entitiesBySlugLower(tenantEntities ?? []), [tenantEntities]);
+
+  const slugsForRefResolution = useMemo(() => {
+    const s = new Set<string>();
+    for (const x of visibleColSlugs) s.add(x);
+    for (const f of listSummaryFieldsOrdered) s.add(f.slug);
+    return s;
+  }, [visibleColSlugs, listSummaryFieldsOrdered]);
+
+  const referenceResolutionTasks = useMemo(
+    () => collectReferenceResolutionTasks(fields ?? [], slugsForRefResolution, entitiesBySlug),
+    [fields, slugsForRefResolution, entitiesBySlug]
+  );
+
   const colMetaBySlug = useMemo(() => {
     const m = new Map<string, RecordListColumnDefinition>();
     if (savedListView) {
@@ -624,6 +722,75 @@ export function EntityRecordsListPage() {
     if (savedListView != null) return savedListView.showRecordId;
     return true;
   })();
+
+  useEffect(() => {
+    if (!tenantId || !fields?.length || items.length === 0 || referenceResolutionTasks.length === 0) {
+      setReferenceLabelMap({});
+      return;
+    }
+    let cancelled = false;
+    const entitiesMap = entitiesBySlug;
+
+    const fetchKeys = new Map<string, { targetEntityId: string; uuid: string }>();
+    for (const row of items) {
+      for (const { field, targetEntityId } of referenceResolutionTasks) {
+        const raw = row.values[field.slug];
+        if (raw === undefined || raw === null) continue;
+        const uuid = String(raw).trim();
+        if (!looksLikeRecordUuid(uuid)) continue;
+        fetchKeys.set(`${targetEntityId}::${uuid}`, { targetEntityId, uuid });
+      }
+    }
+
+    if (fetchKeys.size === 0) {
+      setReferenceLabelMap({});
+      return;
+    }
+
+    async function run() {
+      const recordCache = new Map<string, RecordDto>();
+      const pairs = [...fetchKeys.values()];
+      for (const group of chunkArray(pairs, REF_LABEL_FETCH_CONCURRENCY)) {
+        if (cancelled) return;
+        await Promise.all(
+          group.map(async ({ targetEntityId, uuid }) => {
+            const k = `${targetEntityId}::${uuid}`;
+            try {
+              const rec = await getRecord(tenantId, targetEntityId, uuid);
+              if (!cancelled) recordCache.set(k, rec);
+            } catch {
+              /* leave missing; UI falls back to short UUID */
+            }
+          })
+        );
+      }
+      if (cancelled) return;
+      const next: Record<string, string> = {};
+      for (const row of items) {
+        for (const { field, targetEntityId } of referenceResolutionTasks) {
+          const raw = row.values[field.slug];
+          if (raw === undefined || raw === null) continue;
+          const uuid = String(raw).trim();
+          if (!looksLikeRecordUuid(uuid)) continue;
+          const rec = recordCache.get(`${targetEntityId}::${uuid}`);
+          if (!rec) continue;
+          const cfg = readReferenceFieldConfig(field.config);
+          const ent = entitiesMap[cfg.targetEntitySlug];
+          next[`${field.slug}::${uuid}`] = buildReferenceRecordLabel(
+            rec,
+            ent?.defaultDisplayFieldSlug,
+            cfg.lookupDisplaySlugs
+          );
+        }
+      }
+      setReferenceLabelMap(next);
+    }
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantId, items, fields, referenceResolutionTasks, entitiesBySlug]);
 
   const load = useCallback(async () => {
     if (!tenantId || !entityId || !canRecordsRead) return;
@@ -870,6 +1037,8 @@ export function EntityRecordsListPage() {
         canRecordsWrite,
         entity,
         entityId,
+        listSummaryFieldsOrdered,
+        referenceLabelMap,
         saveInline,
         onDelete,
       }),
@@ -886,6 +1055,8 @@ export function EntityRecordsListPage() {
     canRecordsWrite,
     entity,
     entityId,
+    listSummaryFieldsOrdered,
+    referenceLabelMap,
     saveInline,
     onDelete,
   ]);
@@ -955,7 +1126,7 @@ export function EntityRecordsListPage() {
             {entity ? `${entity.name} — browse and open records.` : 'Loading…'}
           </Text>
           {entity && (
-            <Text size="sm" c="dimmed" mt="xs">
+            <Box component="div" mt="xs" fz="sm" c="dimmed">
               {legacyCustomColumns && (
                 <>
                   Active list: <strong>Custom columns</strong> from this page&apos;s link (<code>cols=</code>). Switching
@@ -966,7 +1137,7 @@ export function EntityRecordsListPage() {
                 <>
                   Active list view: <strong>{activeListViewInfo.name}</strong>
                   {activeListViewInfo.isDefault && (
-                    <Badge ml="xs" size="sm" variant="light" color="green">
+                    <Badge ml="xs" size="sm" variant="light" color="green" component="span">
                       default
                     </Badge>
                   )}
@@ -988,7 +1159,7 @@ export function EntityRecordsListPage() {
                   loads here automatically.
                 </>
               )}
-            </Text>
+            </Box>
           )}
         </Stack>
         <Group gap="xs" wrap="nowrap" style={{ maxWidth: '100%', overflowX: 'auto' }}>

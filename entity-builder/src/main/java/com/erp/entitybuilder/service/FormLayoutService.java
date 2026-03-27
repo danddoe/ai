@@ -1,6 +1,7 @@
 package com.erp.entitybuilder.service;
 
 import com.erp.entitybuilder.domain.EntityField;
+import com.erp.entitybuilder.domain.EntityFieldStatuses;
 import com.erp.entitybuilder.domain.FormLayout;
 import com.erp.entitybuilder.repository.EntityDefinitionRepository;
 import com.erp.entitybuilder.repository.EntityFieldRepository;
@@ -66,7 +67,7 @@ public class FormLayoutService {
             throw new ApiException(HttpStatus.CONFLICT, "conflict", "Form layout name already exists", Map.of("name", name));
         }
 
-        layoutJsonValidator.validateOrThrow(layoutJson);
+        layoutJsonValidator.validateOrThrow(layoutJson, tenantId, entityId);
 
         FormLayout l = new FormLayout();
         l.setTenantId(tenantId);
@@ -92,7 +93,9 @@ public class FormLayoutService {
     @Transactional
     public FormLayout createFromTemplate(UUID tenantId, UUID entityId, String templateKey, String name, boolean isDefault) {
         String templateJson = templateLibrary.requireLayoutJson(templateKey);
-        Map<String, UUID> slugToId = fieldRepository.findByEntityId(entityId).stream()
+        Map<String, UUID> slugToId = fieldRepository
+                .findByEntityIdAndStatusOrderBySortOrderAscNameAsc(entityId, EntityFieldStatuses.ACTIVE)
+                .stream()
                 .collect(Collectors.toMap(EntityField::getSlug, EntityField::getId, (a, b) -> a));
         String mapped;
         try {
@@ -116,7 +119,7 @@ public class FormLayoutService {
 
         name.filter(v -> v != null && !v.isBlank()).ifPresent(l::setName);
         layoutJson.ifPresent(json -> {
-            layoutJsonValidator.validateOrThrow(json);
+            layoutJsonValidator.validateOrThrow(json, tenantId, l.getEntityId());
             l.setLayout(json);
         });
         status.filter(v -> v != null && !v.isBlank()).ifPresent(v -> l.setStatus(normalizeFormLayoutStatus(v)));

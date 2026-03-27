@@ -11,6 +11,9 @@ import java.util.UUID;
 
 public class EntityFieldDtos {
 
+    /** Response for {@code DELETE /v1/entities/{entityId}/fields/{fieldId}}: {@code DELETED} or {@code DEACTIVATED}. */
+    public record FieldDeleteResponse(String outcome) {}
+
     public record EntityFieldDto(
             UUID id,
             UUID entityId,
@@ -28,6 +31,7 @@ public class EntityFieldDtos {
             Map<String, String> labels,
             String formatString,
             String status,
+            boolean includeInListSummaryDisplay,
             Instant createdAt,
             Instant updatedAt,
             Map<String, Object> config
@@ -65,6 +69,8 @@ public class EntityFieldDtos {
         @Size(max = 500)
         private String formatString;
 
+        private boolean includeInListSummaryDisplay = false;
+
         public String getName() { return name; }
         public void setName(String name) { this.name = name; }
         public String getSlug() { return slug; }
@@ -83,6 +89,10 @@ public class EntityFieldDtos {
         public void setLabelOverride(String labelOverride) { this.labelOverride = labelOverride; }
         public String getFormatString() { return formatString; }
         public void setFormatString(String formatString) { this.formatString = formatString; }
+        public boolean isIncludeInListSummaryDisplay() { return includeInListSummaryDisplay; }
+        public void setIncludeInListSummaryDisplay(boolean includeInListSummaryDisplay) {
+            this.includeInListSummaryDisplay = includeInListSummaryDisplay;
+        }
     }
 
     public static class UpdateFieldRequest {
@@ -108,6 +118,8 @@ public class EntityFieldDtos {
         @Size(max = 500)
         private String formatString;
 
+        private Boolean includeInListSummaryDisplay;
+
         public String getName() { return name; }
         public void setName(String name) { this.name = name; }
         public String getSlug() { return slug; }
@@ -126,6 +138,10 @@ public class EntityFieldDtos {
         public void setLabelOverride(String labelOverride) { this.labelOverride = labelOverride; }
         public String getFormatString() { return formatString; }
         public void setFormatString(String formatString) { this.formatString = formatString; }
+        public Boolean getIncludeInListSummaryDisplay() { return includeInListSummaryDisplay; }
+        public void setIncludeInListSummaryDisplay(Boolean includeInListSummaryDisplay) {
+            this.includeInListSummaryDisplay = includeInListSummaryDisplay;
+        }
     }
 }
 

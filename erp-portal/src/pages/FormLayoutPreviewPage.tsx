@@ -5,9 +5,11 @@ import {
   getEntity,
   getFormLayout,
   listEntities,
+  listEntityRelationships,
   listFields,
   type EntityDto,
   type EntityFieldDto,
+  type EntityRelationshipDto,
 } from '../api/schemas';
 import { useAuth } from '../auth/AuthProvider';
 import { RecordFormRuntimeProvider } from '../components/runtime/RecordFormRuntimeContext';
@@ -55,6 +57,7 @@ export function FormLayoutPreviewPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [allEntities, setAllEntities] = useState<EntityDto[]>([]);
+  const [relationships, setRelationships] = useState<EntityRelationshipDto[]>([]);
 
   const entityBySlug = useMemo(
     () => buildEntityBySlugForReferenceFields(fields, allEntities),
@@ -80,14 +83,16 @@ export function FormLayoutPreviewPage() {
     const draftFromNav = st?.draft;
     if (isLayoutV2Draft(draftFromNav)) {
       try {
-        const [e, flds, allEnts] = await Promise.all([
+        const [e, flds, allEnts, rels] = await Promise.all([
           getEntity(entityId),
           listFields(entityId),
           listEntities(),
+          listEntityRelationships(),
         ]);
         setEntity(e);
         setFields(flds);
         setAllEntities(allEnts);
+        setRelationships(rels);
         setLayout(draftFromNav);
         setLayoutName('(unsaved draft)');
         setValues(buildSampleValues(flds));
@@ -97,6 +102,7 @@ export function FormLayoutPreviewPage() {
         setError(err instanceof Error ? err.message : 'Failed to load');
         setLayout(null);
         setAllEntities([]);
+        setRelationships([]);
       } finally {
         setLoading(false);
       }
@@ -104,15 +110,17 @@ export function FormLayoutPreviewPage() {
     }
 
     try {
-      const [e, flds, dto, allEnts] = await Promise.all([
+      const [e, flds, dto, allEnts, rels] = await Promise.all([
         getEntity(entityId),
         listFields(entityId),
         getFormLayout(entityId, layoutId),
         listEntities(),
+        listEntityRelationships(),
       ]);
       setEntity(e);
       setFields(flds);
       setAllEntities(allEnts);
+      setRelationships(rels);
       setLayoutName(dto.name);
       const parsed = parseLayoutV2(dto.layout);
       if (!parsed) {
@@ -128,6 +136,7 @@ export function FormLayoutPreviewPage() {
       setError(err instanceof Error ? err.message : 'Failed to load');
       setLayout(null);
       setAllEntities([]);
+      setRelationships([]);
     } finally {
       setLoading(false);
     }
@@ -220,6 +229,18 @@ export function FormLayoutPreviewPage() {
               disabled={false}
               canPiiRead={canPiiRead}
               useTabGroups={!isWizard}
+              relatedContext={
+                tenantId
+                  ? {
+                      tenantId,
+                      hostEntityId: entityId,
+                      parentRecordId: null,
+                      relationships,
+                      allEntities,
+                      canWrite: false,
+                    }
+                  : undefined
+              }
               onLayoutAction={(a) => {
                 window.alert(
                   a === 'save'

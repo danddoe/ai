@@ -38,6 +38,25 @@ export function parseJwtTenantId(accessToken: string | null): string {
   return typeof tid === 'string' ? tid : '';
 }
 
+/** JWT {@code exp} as milliseconds since epoch, or null if missing or invalid. */
+export function parseJwtExpiresAtMs(accessToken: string | null): number | null {
+  const payload = parseJwtPayload(accessToken);
+  if (!payload) return null;
+  const exp = payload.exp;
+  if (typeof exp !== 'number' || !Number.isFinite(exp)) return null;
+  return exp * 1000;
+}
+
+/**
+ * True when the token has a valid {@code exp} and it falls within {@param withinMs} from now (inclusive).
+ * Used to refresh the access token before API calls so users are not interrupted at the 15-minute boundary.
+ */
+export function isAccessTokenExpiredOrNearing(accessToken: string | null, withinMs: number): boolean {
+  const ms = parseJwtExpiresAtMs(accessToken);
+  if (ms == null) return false;
+  return Date.now() >= ms - withinMs;
+}
+
 export function canSchemaRead(permissions: string[]): boolean {
   return (
     permissions.includes(SCHEMA_READ) ||

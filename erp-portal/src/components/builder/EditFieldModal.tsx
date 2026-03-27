@@ -15,8 +15,10 @@ import {
 import { Modal } from '../Modal';
 import {
   DOCUMENT_NUMBER_FIELD_TYPE,
+  activeEntityFields,
   createEntityRelationship,
   deleteEntityRelationship,
+  deleteField,
   getEntity,
   isDocumentNumberFieldType,
   listEntities,
@@ -43,6 +45,7 @@ import {
   readConfigLengthString,
 } from '../../utils/fieldTextConstraints';
 import { MAX_REFERENCE_LOOKUP_COLUMNS } from '../../utils/referenceFieldConfig';
+import { inverseCardinalityLabel, storageCardinalityAndDirection } from '../../utils/relationshipCardinality';
 import { ENTITY_STATUS_ENTITY_SLUG } from '../../utils/entityStatusCatalog';
 import { EntityStatusAssignmentsPanel } from '../EntityStatusAssignmentsPanel';
 
@@ -51,6 +54,8 @@ type Props = {
   field: EntityFieldDto;
   onClose: () => void;
   onUpdated: (f: EntityFieldDto) => void;
+  /** Called after a successful DELETE (removed or deactivated); parent should refresh field lists. */
+  onDeleted?: () => void;
 };
 
 function isReferenceFieldType(ft: string): boolean {
@@ -87,7 +92,10 @@ function readReferenceUiMode(cfg: EntityFieldDto['config']): 'search' | 'dropdow
   return raw === 'dropdown' ? 'dropdown' : 'search';
 }
 
-/** FK-style reference: {@code from} = referenced entity, {@code to} = entity that owns the field (matches record links / DDL import). */
+/**
+ * Matches record links and form region bindings: {@code from} = parent entity (field owner), {@code to} = child entity.
+ * Also recognizes legacy relationships created before that convention (inverted {@code from}/{@code to}).
+ */
 function findRelationshipForReferenceField(
   rels: EntityRelationshipDto[],
   p: { entityId: string; fieldSlug: string; targetEntityId: string | null; relationshipId?: string }
@@ -97,13 +105,32 @@ function findRelationshipForReferenceField(
     if (byId) return byId;
   }
   if (!p.targetEntityId || !p.fieldSlug) return null;
-  const strict = rels.find(
+  const strictCanonical = rels.find(
+    (r) =>
+      r.fromEntityId === p.entityId &&
+      r.toEntityId === p.targetEntityId &&
+      r.toFieldSlug === p.fieldSlug
+  );
+  if (strictCanonical) return strictCanonical;
+  const looseCanonical =
+    rels.find(
+      (r) =>
+        r.fromEntityId === p.entityId &&
+        r.toEntityId === p.targetEntityId &&
+        (r.toFieldSlug == null || r.toFieldSlug === '')
+    ) ?? null;
+  if (looseCanonical) return looseCanonical;
+  const childSidePairs = rels.filter(
+    (r) => r.fromEntityId === p.targetEntityId && r.toEntityId === p.entityId
+  );
+  if (childSidePairs.length === 1) return childSidePairs[0];
+  const strictLegacy = rels.find(
     (r) =>
       r.fromEntityId === p.targetEntityId &&
       r.toEntityId === p.entityId &&
       r.toFieldSlug === p.fieldSlug
   );
-  if (strict) return strict;
+  if (strictLegacy) return strictLegacy;
   return (
     rels.find(
       (r) =>
@@ -135,8 +162,9 @@ const EDITABLE_FIELD_TYPES: { value: string; label: string }[] = [
   { value: DOCUMENT_NUMBER_FIELD_TYPE, label: 'document number (record column)' },
 ];
 
-export function EditFieldModal({ entityId, field, onClose, onUpdated }: Props) {
+export function EditFieldModal({ entityId, field, onClose, onUpdated, onDeleted }: Props) {
   const { tenantId, canSchemaWrite, permissions } = useAuth();
+  const inactive = (field.status ?? 'ACTIVE').toUpperCase() === 'INACTIVE';
   const [name, setName] = useState(field.name);
   const [slug, setSlug] = useState(field.slug);
   const [fieldType, setFieldType] = useState(field.fieldType);
@@ -144,6 +172,9 @@ export function EditFieldModal({ entityId, field, onClose, onUpdated }: Props) {
   const [labelEs, setLabelEs] = useState(() => field.labels?.es?.trim() ?? '');
   const [required, setRequired] = useState(field.required);
   const [pii, setPii] = useState(field.pii);
+  const [includeInListSummaryDisplay, setIncludeInListSummaryDisplay] = useState(
+    () => field.includeInListSummaryDisplay === true
+  );
   const [includeInSearch, setIncludeInSearch] = useState(() => configSearchable(field.config));
   const docInit = readDocGenFromConfig(field.config);
   const [docStrategy, setDocStrategy] = useState<DocumentNumberGenerationStrategy>(docInit.strategy);
@@ -158,6 +189,8 @@ export function EditFieldModal({ entityId, field, onClose, onUpdated }: Props) {
   );
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [deletePending, setDeletePending] = useState(false);
 
   const [schemaLoaded, setSchemaLoaded] = useState(false);
   const [currentEntity, setCurrentEntity] = useState<EntityDto | null>(null);
@@ -246,7 +279,7 @@ export function EditFieldModal({ entityId, field, onClose, onUpdated }: Props) {
 
   const lookupColumnSelectData = useMemo(
     () =>
-      targetEntityFields
+      activeEntityFields(targetEntityFields)
         .slice()
         .sort((a, b) => a.name.localeCompare(b.name))
         .map((f) => ({ value: f.slug, label: `${f.name} (${f.slug})` })),
@@ -268,7 +301,12 @@ export function EditFieldModal({ entityId, field, onClose, onUpdated }: Props) {
     if (matchedRelationship) {
       setRelName(matchedRelationship.name);
       setRelSlug(matchedRelationship.slug);
-      setRelCardinality(matchedRelationship.cardinality);
+      const editingFromChildSide =
+        targetEntity != null &&
+        matchedRelationship.fromEntityId === targetEntity.id &&
+        matchedRelationship.toEntityId === entityId;
+      const inv = inverseCardinalityLabel(matchedRelationship.cardinality);
+      setRelCardinality(editingFromChildSide && inv ? inv : matchedRelationship.cardinality);
       setRelFromFieldSlug(matchedRelationship.fromFieldSlug?.trim() || 'id');
       return;
     }
@@ -278,7 +316,7 @@ export function EditFieldModal({ entityId, field, onClose, onUpdated }: Props) {
       setRelCardinality('one-to-many');
       setRelFromFieldSlug('id');
     }
-  }, [schemaLoaded, fieldType, matchedRelationship?.id, targetEntity?.id, currentEntity?.id]);
+  }, [schemaLoaded, fieldType, matchedRelationship?.id, matchedRelationship?.cardinality, targetEntity, currentEntity, slug, entityId]);
 
   const targetEntitySelectData = useMemo(() => {
     return entities
@@ -293,6 +331,7 @@ export function EditFieldModal({ entityId, field, onClose, onUpdated }: Props) {
 
   const showDocumentNumberSection = isDocumentNumberFieldType(fieldType);
   const showTextLengthSection = fieldTypeSupportsTextLengthConstraints(fieldType);
+  const inverseOfSelectedCardinality = inverseCardinalityLabel(relCardinality);
 
   const fieldTypeSelectData = useMemo(() => {
     const current = fieldType.trim();
@@ -334,6 +373,7 @@ export function EditFieldModal({ entityId, field, onClose, onUpdated }: Props) {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
+    if (inactive) return;
     setError(null);
     setPending(true);
     try {
@@ -381,6 +421,7 @@ export function EditFieldModal({ entityId, field, onClose, onUpdated }: Props) {
         pii,
         labelOverride: formLabel.trim() || '',
         config,
+        includeInListSummaryDisplay,
       });
 
       if (isReferenceFieldType(ft) && targetEntitySlug.trim() && defineRelationship) {
@@ -398,32 +439,38 @@ export function EditFieldModal({ entityId, field, onClose, onUpdated }: Props) {
           targetEntityId: te.id,
           relationshipId: ridAfter ?? readRelationshipId(field.config),
         });
-        const targetChanged = Boolean(matched && matched.fromEntityId !== te.id);
+        const desired = storageCardinalityAndDirection(entityId, te.id, relCardinality);
+        const onStoredRow =
+          Boolean(matched) &&
+          matched!.fromEntityId === desired.fromEntityId &&
+          matched!.toEntityId === desired.toEntityId;
 
-        if (matched && !targetChanged) {
+        if (matched && onStoredRow) {
+          const isFromSide = entityId === desired.fromEntityId;
           await patchEntityRelationship(matched.id, {
             name: relName.trim(),
             slug: relSlug.trim(),
-            cardinality: relCardinality,
+            cardinality: desired.cardinality,
             fromFieldSlug: relFromFieldSlug.trim() || null,
-            toFieldSlug: effectiveSlug,
+            ...(isFromSide ? { toFieldSlug: effectiveSlug } : {}),
           });
           const cfg = { ...(updated.config ?? {}) } as Record<string, unknown>;
           cfg.relationshipId = matched.id;
           cfg.targetEntitySlug = te.slug;
           updated = await patchField(entityId, updated.id, { config: cfg });
         } else {
-          if (matched && targetChanged) {
+          if (matched) {
             await deleteEntityRelationship(matched.id);
           }
+          const isFromSideCreate = entityId === desired.fromEntityId;
           const created = await createEntityRelationship({
             name: relName.trim(),
             slug: relSlug.trim(),
-            cardinality: relCardinality,
-            fromEntityId: te.id,
-            toEntityId: entityId,
+            cardinality: desired.cardinality,
+            fromEntityId: desired.fromEntityId,
+            toEntityId: desired.toEntityId,
             fromFieldSlug: relFromFieldSlug.trim() || null,
-            toFieldSlug: effectiveSlug,
+            toFieldSlug: isFromSideCreate ? effectiveSlug : null,
           });
           const cfg = { ...(updated.config ?? {}) } as Record<string, unknown>;
           cfg.relationshipId = created.id;
@@ -447,23 +494,82 @@ export function EditFieldModal({ entityId, field, onClose, onUpdated }: Props) {
     }
   }
 
+  async function onConfirmDelete() {
+    setError(null);
+    setDeletePending(true);
+    try {
+      const { outcome } = await deleteField(entityId, field.id);
+      onDeleted?.();
+      onClose();
+      if (outcome === 'DEACTIVATED' && typeof window !== 'undefined') {
+        window.alert(
+          'This field is still referenced by stored record data, so it was deactivated (archived) instead of removed. It no longer appears on new forms or lists.'
+        );
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete field');
+    } finally {
+      setDeletePending(false);
+      setDeleteConfirm(false);
+    }
+  }
+
   return (
     <Modal
-      title="Edit field"
+      title={inactive ? 'Field (inactive)' : 'Edit field'}
       onClose={onClose}
       footer={
-        <Group justify="flex-end" gap="sm">
-          <Button variant="default" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit" form="edit-field-form" loading={pending}>
-            {pending ? 'Saving…' : 'Save'}
-          </Button>
-        </Group>
+        inactive ? (
+          <Group justify="flex-end" gap="sm">
+            <Button variant="default" onClick={onClose}>
+              Close
+            </Button>
+          </Group>
+        ) : deleteConfirm ? (
+          <Stack gap="sm" style={{ width: '100%' }}>
+            <Text size="sm">
+              Delete this field? If existing records still hold a value here, the field will be{' '}
+              <strong>deactivated</strong> (archived) instead of removed. Otherwise it is permanently deleted.
+            </Text>
+            <Group justify="flex-end" gap="sm">
+              <Button variant="default" onClick={() => setDeleteConfirm(false)} disabled={deletePending}>
+                Back
+              </Button>
+              <Button color="red" loading={deletePending} onClick={() => void onConfirmDelete()}>
+                Delete
+              </Button>
+            </Group>
+          </Stack>
+        ) : (
+          <Group justify="space-between" gap="sm" wrap="nowrap" style={{ width: '100%' }}>
+            <Button variant="subtle" color="red" onClick={() => setDeleteConfirm(true)}>
+              Delete field
+            </Button>
+            <Group justify="flex-end" gap="sm">
+              <Button variant="default" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button type="submit" form="edit-field-form" loading={pending}>
+                {pending ? 'Saving…' : 'Save'}
+              </Button>
+            </Group>
+          </Group>
+        )
       }
     >
       <form id="edit-field-form" onSubmit={(e) => void onSubmit(e)}>
         <Stack gap="md">
+          {inactive ? (
+            <Paper withBorder p="sm" radius="md">
+              <Text size="sm">
+                This field is <strong>inactive</strong>. It is kept for historical record data and cannot be edited.
+                Remove it from any form layouts or list views that still reference it, then reopen the layout to
+                validate.
+              </Text>
+            </Paper>
+          ) : null}
+          <fieldset disabled={inactive} style={{ border: 'none', margin: 0, padding: 0, minWidth: 0 }}>
+            <Stack gap="md">
           <TextInput label="Name" value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
           <TextInput
             label="Form label (optional)"
@@ -494,6 +600,12 @@ export function EditFieldModal({ entityId, field, onClose, onUpdated }: Props) {
           />
           <Checkbox label="Required" checked={required} onChange={(e) => setRequired(e.currentTarget.checked)} />
           <Checkbox label="PII" checked={pii} onChange={(e) => setPii(e.currentTarget.checked)} />
+          <Checkbox
+            label="Include in record list summary"
+            description="Basic records table: concatenate this field with others (sort order). Server joins scalar parts in one query; reference parts resolve in the browser."
+            checked={includeInListSummaryDisplay}
+            onChange={(e) => setIncludeInListSummaryDisplay(e.currentTarget.checked)}
+          />
           <Checkbox
             label="Include in global search / lookups"
             checked={includeInSearch}
@@ -576,6 +688,7 @@ export function EditFieldModal({ entityId, field, onClose, onUpdated }: Props) {
                 ) : null}
                 <Checkbox
                   label="Define record relationship (for links API)"
+                  description="From = this entity (parent). To = target entity. one-to-many / many-to-many show a related table on the record form (after save) instead of a single lookup."
                   checked={defineRelationship}
                   onChange={(e) => setDefineRelationship(e.currentTarget.checked)}
                   disabled={!targetEntitySlug.trim()}
@@ -600,21 +713,33 @@ export function EditFieldModal({ entityId, field, onClose, onUpdated }: Props) {
                       data={[
                         { value: 'one-to-one', label: 'one-to-one' },
                         { value: 'one-to-many', label: 'one-to-many' },
+                        { value: 'many-to-one', label: 'many-to-one' },
                         { value: 'many-to-many', label: 'many-to-many' },
                       ]}
                       value={relCardinality}
                       onChange={(v) => v && setRelCardinality(v)}
                     />
+                    {inverseOfSelectedCardinality ? (
+                      <Text size="xs" c="dimmed">
+                        The other entity sees this as <strong>{inverseOfSelectedCardinality}</strong>. Only one
+                        relationship row is stored; record links always use the <strong>from</strong> entity as the parent
+                        record in the links API (we align direction when you pick <strong>many-to-one</strong> here).
+                      </Text>
+                    ) : null}
                     <TextInput
-                      label="Field on referenced entity"
-                      description="Usually id on the parent entity."
+                      label="Field on parent (from side)"
+                      description="Usually id on this entity; optional metadata (e.g. DDL / tooling)."
                       value={relFromFieldSlug}
                       onChange={(e) => setRelFromFieldSlug(e.target.value)}
                     />
                     <Text size="xs" c="dimmed">
-                      This field’s slug is the “to” side (child / FK column). The relationship runs from the{' '}
-                      <strong>target</strong> entity to <strong>this</strong> entity (same convention as DDL import and
-                      record links).
+                      Stored row direction follows the dropdown: <strong>one-to-many</strong> / <strong>one-to-one</strong>{' '}
+                      / <strong>many-to-many</strong> from <strong>this</strong> entity → target; <strong>many-to-one</strong>{' '}
+                      is stored as <strong>one-to-many</strong> from target → this (parent on the &quot;one&quot; side is{' '}
+                      <strong>from</strong> for links). Opening the target entity&apos;s reference to this one reuses the same
+                      relationship when there is only one edge between the two. Related-records <strong>table</strong> on the
+                      form applies to <strong>one-to-many</strong> and <strong>many-to-many</strong> on the parent field;
+                      other cases use the lookup.
                     </Text>
                   </>
                 ) : null}
@@ -669,6 +794,8 @@ export function EditFieldModal({ entityId, field, onClose, onUpdated }: Props) {
               setDocTimeZone={setDocTimeZone}
             />
           )}
+            </Stack>
+          </fieldset>
 
           {error && (
             <Text role="alert" c="red" size="sm">

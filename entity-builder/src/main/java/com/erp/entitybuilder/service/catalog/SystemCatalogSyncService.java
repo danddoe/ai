@@ -193,7 +193,8 @@ public class SystemCatalogSyncService {
                     Optional.ofNullable(configJson),
                     sortOrderUpdate,
                     labelOverrideUpdate,
-                    formatStringUpdate
+                    formatStringUpdate,
+                    Optional.empty()
             );
         }
     }

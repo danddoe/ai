@@ -810,6 +810,10 @@ export function ListViewDesignerPage() {
                 .sort((a, b) => a.name.localeCompare(b.name))
             )
           }
+          onDeleted={() => {
+            setEditField(null);
+            void load();
+          }}
         />
       )}
     </div>
